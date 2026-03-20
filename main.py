@@ -37,22 +37,20 @@ class LinearProblemInput(QMainWindow):
 
         # === Вкладка 1: Условия задачи ===
         self.tab_conditions = QWidget()
-        self.tabs.addTab(self.tab_conditions, "📋 Условия задачи")
+        self.tabs.addTab(self.tab_conditions, "Условия задачи")
         self._init_conditions_tab()
 
         # === Вкладка 2: Метод искусственного базиса ===
         self.tab_artificial = QWidget()
-        self.tabs.addTab(self.tab_artificial, "🔢 Метод искусственного базиса")
+        self.tabs.addTab(self.tab_artificial, "Метод искусственного базиса")
         self._init_artificial_tab()
 
         # === Вкладка 3: Графический метод ===
         self.tab_graphic = QWidget()
-        self.tabs.addTab(self.tab_graphic, "📊 Графический метод")
+        self.tabs.addTab(self.tab_graphic, "Графический метод")
         self._init_graphic_tab()
 
-    # ============================================================
     # === ВКЛАДКА 1: УСЛОВИЯ ЗАДАЧИ ===
-    # ============================================================
     def _init_conditions_tab(self):
         """Инициализация первой вкладки с условиями задачи"""
         layout = QVBoxLayout(self.tab_conditions)
@@ -63,7 +61,7 @@ class LinearProblemInput(QMainWindow):
         # === ЛЕВАЯ ПАНЕЛЬ: Ввод параметров ===
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
-        left_panel.setMaximumWidth(400)
+        left_panel.setMaximumWidth(500)
 
         # Блок размерности
         dim_group = QGroupBox("Размерность задачи")
@@ -124,7 +122,7 @@ class LinearProblemInput(QMainWindow):
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
 
-        right_layout.addWidget(QLabel("📝 Постановка задачи:"))
+        right_layout.addWidget(QLabel("Постановка задачи:"))
 
         self.problem_text = QTextEdit()
         self.problem_text.setReadOnly(True)
@@ -143,7 +141,6 @@ class LinearProblemInput(QMainWindow):
         self.table_widget = QTableWidget()
         self.table_widget.horizontalHeader().setStretchLastSection(True)
 
-        # 🔥 ГЛАВНОЕ ИЗМЕНЕНИЕ: подключаем сигнал cellChanged
         self.table_widget.cellChanged.connect(self.update_problem_text)
 
         matrix_layout.addWidget(self.table_widget)
@@ -178,18 +175,12 @@ class LinearProblemInput(QMainWindow):
         # Инициализация при старте
         self.on_dimension_changed()
 
-    # ============================================================
     # === ВКЛАДКА 2: МЕТОД ИСКУССТВЕННОГО БАЗИСА ===
-    # ============================================================
     def _init_artificial_tab(self):
         """Инициализация вкладки с симплекс-таблицами"""
         layout = QVBoxLayout(self.tab_artificial)
 
-        header_label = QLabel("🔢 Метод искусственного базиса (симплекс-таблицы)")
-        header_label.setFont(QApplication.font())
-        header_label.setStyleSheet("font-size: 16px; font-weight: bold;")
-        layout.addWidget(header_label)
-
+        # КНОПКИ
         control_group = QGroupBox("Управление решением")
         control_layout = QHBoxLayout()
 
@@ -218,21 +209,37 @@ class LinearProblemInput(QMainWindow):
         control_group.setLayout(control_layout)
         layout.addWidget(control_group)
 
-        self.simplex_table = QTableWidget()
-        self.simplex_table.setMinimumHeight(400)
-        layout.addWidget(self.simplex_table)
+        # Таблица
+        # инициализация
+        #self.simplex_table = QTableWidget()
+        #self.simplex_table.setMinimumHeight(400)
+        #layout.addWidget(self.simplex_table)
 
-        self.step_info = QTextEdit()
-        self.step_info.setReadOnly(True)
-        self.step_info.setMaximumHeight(150)
-        self.step_info.setPlaceholderText("Здесь будет отображаться информация о текущем шаге решения...")
-        layout.addWidget(self.step_info)
+        fisrt_table_isc_group = QGroupBox("Вспомогательная задача")
+        newf_layout = QVBoxLayout()
+
+        # F = x5 + x6 -> min
+        self.newF = QLabel()
+        newf_layout.addWidget(self.newF)
+
+        # x* = (0,0,0,0,4,1)
+        self.newF_res = QLabel()
+        newf_layout.addWidget(self.newF_res)
+
+        # Первая x*0 таблица
+        self.x0isc_group = QGroupBox("X*0 таблица")
+        self.x0isc_table_layout = QVBoxLayout()
+
+        self.x0isc_table = QTableWidget()
+        newf_layout.addWidget(self.x0isc_table)
+        layout.addWidget(fisrt_table_isc_group)
+
+        fisrt_table_isc_group.setLayout(newf_layout)
+        newf_layout.addWidget(self.x0isc_group)
 
         layout.addStretch()
 
-    # ============================================================
     # === ВКЛАДКА 3: ГРАФИЧЕСКИЙ МЕТОД ===
-    # ============================================================
     def _init_graphic_tab(self):
         """Инициализация вкладки с графиками"""
         layout = QVBoxLayout(self.tab_graphic)
@@ -270,9 +277,7 @@ class LinearProblemInput(QMainWindow):
 
         layout.addStretch()
 
-    # ============================================================
     # === ЛОГИКА ПЕРВОЙ ВКЛАДКИ ===
-    # ============================================================
     def on_dimension_changed(self):
         """Пересоздание таблицы и обновление текста задачи при изменении размерности"""
         self.n_vars = self.n_spin.value()
@@ -414,6 +419,7 @@ class LinearProblemInput(QMainWindow):
         except:
             raise ValueError(f"Неверный формат числа: {text}")
 
+# Кнопка решить задачу
     def validate_and_save(self):
         """Валидация и сохранение данных"""
         try:
@@ -438,6 +444,10 @@ class LinearProblemInput(QMainWindow):
                 self.vector_b.append(self.parse_fraction(item_b.text() if item_b else "0"))
 
             self.is_minimization = self.min_radio.isChecked()
+
+            self.update_newf()
+            self.update_newf_res()
+            self.update_x0isc_table()
 
             self.btn_step_forward.setEnabled(True)
             self.btn_step_back.setEnabled(True)
@@ -542,9 +552,62 @@ class LinearProblemInput(QMainWindow):
             self.btn_auto_solve.setEnabled(False)
             self.btn_select_pivot.setEnabled(False)
 
+# Вторая вкладка
+    def update_newf(self):
+        # F = x5 + x6 -> min
+        opt_type = "min"
+        artificial_vars = []
+        for j in range(self.m_constrs):
+            var_index = self.n_vars + j + 1
+            artificial_vars.append(f"x{var_index}")
+        vars_string = " + ".join(artificial_vars)
+        if not vars_string:
+            vars_string = "0"
+        formula = f"F = {vars_string} -> {opt_type}"
+        self.newF.setText(formula)
+
+    def update_newf_res(self):
+        # x* = (0,0,0,0,4,1)
+        solution = ["0"] * self.n_vars
+        for i in range(len(self.vector_b)):
+            solution.append(str(self.vector_b[i]))
+        vars_string2 = ", ".join(solution)
+        formula2 = f"x*0 = ({vars_string2})"
+        self.newF_res.setText(formula2)
+
+    def update_x0isc_table(self):
+
+        #self.x0isc_table = QTableWidget()
+        # newf_layout.addWidget(self.x0isc_table)
+
+        """Обновление таблицы x*0"""
+        self.x0isc_table.setRowCount(self.m_constrs + 1)
+        self.x0isc_table.setColumnCount(self.n_vars + 1)
+
+        h_labels = [f"x{j + 1}" for j in range(self.n_vars)] + ["b"]
+        self.x0isc_table.setHorizontalHeaderLabels(h_labels)
+
+        v_labels = [f"x{self.n_vars + i + 1}" for i in range(self.m_constrs)]
+        v_labels.append("f")
+        self.x0isc_table.setVerticalHeaderLabels(v_labels)
+
+
+        # Заполняем матрицу А
+        for i in range(self.m_constrs):
+            for j in range(self.n_vars):
+                value = self.matrix_A[i][j]
+                item = QTableWidgetItem(str(value))
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                self.x0isc_table.setItem(i, j, item)
+
+            b_value = self.vector_b[i]
+            item_b = QTableWidgetItem(str(b_value))
+            item_b.setFlags(item_b.flags() & ~Qt.ItemIsEditable)
+            self.x0isc_table.setItem(i, self.n_vars, item_b)
+
     # ============================================================
+
     # === ЗАГЛУШКИ ДЛЯ ВТОРОЙ И ТРЕТЬЕЙ ВКЛАДОК ===
-    # ============================================================
     def on_step_forward(self):
         self.step_info.append("➡ Переход к следующей итерации...")
 
