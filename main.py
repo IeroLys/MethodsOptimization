@@ -23,6 +23,11 @@ class LinearProblemInput(QMainWindow):
         self.vector_b = []
         self.is_minimization = True
 
+        # Пошаговый режим
+        self.selected_row = -1
+        self.selected_col = -1
+        self.solution_history = []
+
         self.init_ui()
 
     def init_ui(self):
@@ -230,12 +235,16 @@ class LinearProblemInput(QMainWindow):
         self.x0isc_group = QGroupBox("X*0 таблица")
         self.x0isc_table_layout = QVBoxLayout()
 
-        self.x0isc_table = QTableWidget()
-        newf_layout.addWidget(self.x0isc_table)
-        layout.addWidget(fisrt_table_isc_group)
 
+        layout.addWidget(fisrt_table_isc_group)
         fisrt_table_isc_group.setLayout(newf_layout)
-        newf_layout.addWidget(self.x0isc_group)
+
+        self.x0isc_table = QTableWidget()
+        self.x0isc_table.setSelectionBehavior(QTableWidget.SelectItems)
+        self.x0isc_table.itemClicked.connect(self.on_table_cell_clicked)
+        self.x0isc_table_layout.addWidget(self.x0isc_table)
+        self.x0isc_group.setLayout(self.x0isc_table_layout)
+        layout.addWidget(self.x0isc_group)
 
         layout.addStretch()
 
@@ -591,7 +600,6 @@ class LinearProblemInput(QMainWindow):
         v_labels.append("f")
         self.x0isc_table.setVerticalHeaderLabels(v_labels)
 
-
         # Заполняем матрицу А
         for i in range(self.m_constrs):
             for j in range(self.n_vars):
@@ -605,21 +613,287 @@ class LinearProblemInput(QMainWindow):
             item_b.setFlags(item_b.flags() & ~Qt.ItemIsEditable)
             self.x0isc_table.setItem(i, self.n_vars, item_b)
 
-    # ============================================================
+            # item = self.x0isc_table.item(0, 1)
+            # print(item.text())
+
+        '''
+        for r in range (self.x0isc_table.rowCount()):
+            for c in range (self.x0isc_table.columnCount()):
+                item = self.x0isc_table.item(r, c)
+                if item is not None:
+                    #print(item.text())
+                else:
+                    # print("None")
+                    # item.setText("")
+        '''
+
+        # Высчитываем f как сумму столбца со знаком минус
+        for c in range(self.x0isc_table.columnCount()):
+            sum_of_cols = 0
+            for r in range (self.x0isc_table.rowCount()):
+                item = self.x0isc_table.item(r, c)
+                if item:
+                    text = item.text()
+                    if text:  # Проверка на пустую строку
+                        sum_of_cols += float(text)
+            f_row_index = self.m_constrs
+            f_value = -sum_of_cols
+            f_item = QTableWidgetItem(str(f_value))
+            f_item.setFlags(f_item.flags() & ~Qt.ItemIsEditable)  # Делаем не редактируемым
+            self.x0isc_table.setItem(f_row_index, c, f_item)
+
+
+
+            # ============================================================
+
+    # Писала не сама
+    def on_table_cell_clicked(self, item):
+        """Обработка клика по ячейке таблицы"""
+        row = item.row()
+        col = item.column()
+
+        # Сохраняем координаты
+        self.selected_row = row
+        self.selected_col = col
+
+        # 🔥 Визуальное выделение (опционально)
+        # Сбрасываем стиль у всех ячеек
+        for r in range(self.x0isc_table.rowCount()):
+            for c in range(self.x0isc_table.columnCount()):
+                cell_item = self.x0isc_table.item(r, c)
+                if cell_item:
+                    cell_item.setBackground(Qt.white)
+
+        # Выделяем выбранную ячейку
+        item.setBackground(Qt.yellow)
+
+        # Информационное сообщение
+        print(f"Выбрана ячейка: строка {row}, столбец {col}")
 
     # === ЗАГЛУШКИ ДЛЯ ВТОРОЙ И ТРЕТЬЕЙ ВКЛАДОК ===
     def on_step_forward(self):
         self.step_info.append("➡ Переход к следующей итерации...")
 
-    def on_step_back(self):
+    def on_step_backOld(self):
         self.step_info.append("⬅ Возврат к предыдущей итерации...")
+
+    def on_step_back(self):
+        """Возврат к предыдущей итерации (требование 6)"""
+
+        if len(self.solution_history) <= 1:
+            QMessageBox.information(self, "Инфо", "Нечего возвращать!")
+            return
+
+        # Удаляем текущее состояние
+        self.solution_history.pop()
+
+        # Восстанавливаем предыдущее
+        prev_state = self.solution_history[-1]
+
+        self.x0isc_table.setRowCount(prev_state['row_count'])
+        self.x0isc_table.setColumnCount(prev_state['col_count'])
+
+        for r in range(prev_state['row_count']):
+            for c in range(prev_state['col_count']):
+                item = self.x0isc_table.item(r, c)
+                if not item:
+                    item = QTableWidgetItem()
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                    self.x0isc_table.setItem(r, c, item)
+                item.setText(prev_state['data'][r][c])
+
+        QMessageBox.information(self, "Успех", "Возврат выполнен!")
 
     def on_auto_solve(self):
         self.step_info.append("🚀 Запуск автоматического решения...")
 
-    def on_select_pivot(self):
-        self.step_info.append("🎯 Выберите опорный элемент в таблице...")
 
+    def on_select_pivotOld(self):
+        self.step_info.append("🎯 Выберите опорный элемент в таблице...")
+        '''
+        Для автоматического решения
+        def select_pivot_element(self):
+    """Выбор опорного элемента для текущей итерации"""
+    
+    # 1. Найти ведущий столбец (наиболее отрицательный в строке F)
+    f_row = self.m_constrs  # Индекс строки F
+    pivot_col = -1
+    min_value = 0
+    
+    for j in range(self.n_vars + 1):  # +1 для столбца b
+        item = self.x0isc_table.item(f_row, j)
+        if item:
+            value = float(item.text())
+            if value < min_value:
+                min_value = value
+                pivot_col = j
+    
+    if pivot_col == -1:
+        return None  # Решение найдено
+    
+    # 2. Найти ведущую строку (минимальное θ-отношение)
+    pivot_row = -1
+    min_ratio = float('inf')
+    
+    for i in range(self.m_constrs):  # Только строки ограничений
+        item_coeff = self.x0isc_table.item(i, pivot_col)
+        item_b = self.x0isc_table.item(i, self.n_vars)
+        
+        if item_coeff and item_b:
+            coeff = float(item_coeff.text())
+            b_val = float(item_b.text())
+            
+            if coeff > 0:
+                ratio = b_val / coeff
+                if ratio < min_ratio:
+                    min_ratio = ratio
+                    pivot_row = i
+    
+    if pivot_row == -1:
+        return None  # Задача неограничена
+    
+    return (pivot_row, pivot_col)  # Опорный элемент найден
+        
+        '''
+
+    # Писала не сама
+    def on_select_pivot(self):
+        """Обработка кнопки выбора опорного элемента"""
+
+        # Проверка: выбрана ли ячейка
+        if self.selected_row == -1 or self.selected_col == -1:
+            QMessageBox.warning(self, "Внимание",
+                                "Сначала выберите ячейку в таблице!")
+            return
+
+        row = self.selected_row
+        col = self.selected_col
+
+        # 🔥 ВАЛИДАЦИЯ
+
+        # 1. Строка должна быть в пределах ограничений (не строка F)
+        if row >= self.m_constrs:
+            QMessageBox.warning(self, "Ошибка",
+                                "Опорный элемент должен быть в строке ограничений,\n"
+                                f"а не в строке F (строка {self.m_constrs})!")
+            return
+
+        # 2. Получаем значение элемента
+        pivot_item = self.x0isc_table.item(row, col)
+        if not pivot_item:
+            QMessageBox.warning(self, "Ошибка", "Ячейка пуста!")
+            return
+
+        try:
+            pivot_value = float(pivot_item.text())
+        except ValueError:
+            QMessageBox.warning(self, "Ошибка", "Неверное значение в ячейке!")
+            return
+
+        # 3. Элемент должен быть положительным
+        if pivot_value <= 0:
+            QMessageBox.warning(self, "Ошибка",
+                                "Опорный элемент должен быть > 0!")
+            return
+
+        # 4. Проверяем коэффициент в строке F (должен быть отрицательным для минимизации)
+        f_row = self.m_constrs
+        f_item = self.x0isc_table.item(f_row, col)
+        if f_item:
+            try:
+                f_coeff = float(f_item.text())
+                if f_coeff >= 0:
+                    QMessageBox.warning(self, "Ошибка",
+                                        "В столбце ведущей переменной коэффициент\n"
+                                        "в строке F должен быть отрицательным!")
+                    return
+            except ValueError:
+                pass
+
+        # 🔥 Всё верно - сохраняем текущее состояние для возврата (требование 6)
+        self.save_table_state()
+
+        # 🔥 Выполняем симплекс-преобразование
+        self.perform_pivot(row, col)
+
+        QMessageBox.information(self, "Успех",
+                                f"Опорный элемент принят!\nСтрока {row}, Столбец {col}")
+
+    # Доп функции, не мои
+    def save_table_state(self):
+        """Сохранение текущего состояния таблицы для возврата назад"""
+        state = {
+            'row_count': self.x0isc_table.rowCount(),
+            'col_count': self.x0isc_table.columnCount(),
+            'data': []
+        }
+
+        for r in range(self.x0isc_table.rowCount()):
+            row_data = []
+            for c in range(self.x0isc_table.columnCount()):
+                item = self.x0isc_table.item(r, c)
+                row_data.append(item.text() if item else "")
+            state['data'].append(row_data)
+
+        self.solution_history.append(state)
+
+        # Ограничиваем историю (например, 100 шагов)
+        if len(self.solution_history) > 100:
+            self.solution_history.pop(0)
+
+    def perform_pivot(self, pivot_row, pivot_col):
+        """Выполнение симплекс-преобразования"""
+
+        # Получаем опорный элемент
+        pivot_item = self.x0isc_table.item(pivot_row, pivot_col)
+        pivot_value = float(pivot_item.text())
+
+        num_rows = self.x0isc_table.rowCount()
+        num_cols = self.x0isc_table.columnCount()
+
+        # 1. Делим ведущую строку на опорный элемент
+        for c in range(num_cols):
+            item = self.x0isc_table.item(pivot_row, c)
+            if item:
+                value = float(item.text())
+                item.setText(str(value / pivot_value))
+
+        # 2. Обнуляем столбец в остальных строках
+        for r in range(num_rows):
+            if r != pivot_row:
+                multiplier_item = self.x0isc_table.item(r, pivot_col)
+                if multiplier_item:
+                    multiplier = float(multiplier_item.text())
+
+                    for c in range(num_cols):
+                        row_item = self.x0isc_table.item(r, c)
+                        pivot_row_item = self.x0isc_table.item(pivot_row, c)
+
+                        if row_item and pivot_row_item:
+                            row_value = float(row_item.text())
+                            pivot_value = float(pivot_row_item.text())
+                            new_value = row_value - multiplier * pivot_value
+                            row_item.setText(str(new_value))
+
+        # Обновляем заголовки строк (базисные переменные меняются)
+        self.update_row_labels_after_pivot(pivot_row, pivot_col)
+
+        # Сбрасываем выбор
+        self.selected_row = -1
+        self.selected_col = -1
+
+    def update_row_labels_after_pivot(self, pivot_row, pivot_col):
+        """Обновление заголовков строк после замены базисной переменной"""
+        # В симплекс-методе переменная столбца входит в базис
+        # вместо переменной строки
+        v_labels = self.x0isc_table.verticalHeaderLabels()
+
+        # Имя новой базисной переменной (из заголовка столбца)
+        h_labels = self.x0isc_table.horizontalHeaderLabels()
+        new_var_name = h_labels[pivot_col]
+
+        v_labels[pivot_row] = new_var_name
+        self.x0isc_table.setVerticalHeaderLabels(v_labels)
 
 def main():
     app = QApplication(sys.argv)
