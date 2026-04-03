@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QGridLayout, QLabel, QLineEdit,
                              QSpinBox, QPushButton, QTableWidget, QTableWidgetItem,
                              QRadioButton, QButtonGroup, QMessageBox, QGroupBox,
-                             QFileDialog, QScrollArea, QTabWidget, QTextEdit)
+                             QFileDialog, QScrollArea, QTabWidget, QTextEdit, QSizePolicy)
 from PyQt5.QtCore import Qt, QRegularExpression
 from PyQt5.QtGui import QRegularExpressionValidator
 
@@ -186,8 +186,24 @@ class LinearProblemInput(QMainWindow):
 
     # === ВКЛАДКА 2: МЕТОД ИСКУССТВЕННОГО БАЗИСА ===
     def _init_artificial_tab(self):
-        """Инициализация вкладки с симплекс-таблицами (вертикальный список)"""
+        """Инициализация вкладки с прокруткой всего содержимого (таблицы не сжимаются)"""
         layout = QVBoxLayout(self.tab_artificial)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # 🔥 Вернули True для корректной инициализации лейаута
+        self.artificial_scroll = QScrollArea()
+        self.artificial_scroll.setWidgetResizable(True)
+        self.artificial_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.artificial_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        layout.addWidget(self.artificial_scroll)
+
+        scroll_content = QWidget()
+        # 🔥 Позволяет растягиваться по ширине, но запрещает сжатие по высоте ниже контента
+        scroll_content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setAlignment(Qt.AlignTop)
+        self.artificial_scroll.setWidget(scroll_content)
 
         # === КНОПКИ УПРАВЛЕНИЯ ===
         control_group = QGroupBox("Управление решением")
@@ -215,7 +231,7 @@ class LinearProblemInput(QMainWindow):
         control_layout.addWidget(self.btn_select_pivot)
         control_layout.addStretch()
         control_group.setLayout(control_layout)
-        layout.addWidget(control_group)
+        scroll_layout.addWidget(control_group)
 
         # === ИНФОРМАЦИЯ О ВСПОМОГАТЕЛЬНОЙ ЗАДАЧЕ ===
         info_group = QGroupBox("Вспомогательная задача")
@@ -225,22 +241,25 @@ class LinearProblemInput(QMainWindow):
         info_layout.addWidget(self.newF)
         info_layout.addWidget(self.newF_res)
         info_group.setLayout(info_layout)
-        layout.addWidget(info_group)
+        scroll_layout.addWidget(info_group)
 
-        # === КОНТЕЙНЕР ДЛЯ ТАБЛИЦ ИТЕРАЦИЙ (Без скролла!) ===
+        # === ТАБЛИЦЫ ИТЕРАЦИЙ ===
         tables_group = QGroupBox("Итерации симплекс-метода")
         tables_layout = QVBoxLayout()
 
-        # Простой QWidget, который будет содержать все таблицы друг под другом
         self.iterations_container = QWidget()
+        # 🔥 Контейнер тоже не будет сжиматься по вертикали
+        self.iterations_container.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+
         self.iterations_layout = QVBoxLayout(self.iterations_container)
-        self.iterations_layout.setSpacing(10)
-        self.iterations_layout.setAlignment(Qt.AlignTop)  # Таблицы прижаты к верху
+        self.iterations_layout.setSpacing(15)
+        self.iterations_layout.setAlignment(Qt.AlignTop)
 
         tables_layout.addWidget(self.iterations_container)
         tables_group.setLayout(tables_layout)
-        layout.addWidget(tables_group)
-        layout.addStretch()
+        scroll_layout.addWidget(tables_group)
+
+        scroll_layout.addStretch()
 
     # === ВКЛАДКА 3: ГРАФИЧЕСКИЙ МЕТОД ===
     def _init_graphic_tab(self):
@@ -580,7 +599,6 @@ class LinearProblemInput(QMainWindow):
 
     def update_x0isc_table(self):
         """Создание начальной симплекс-таблицы (Итерация 0)"""
-        # Очищаем старые таблицы из контейнера
         while self.iterations_layout.count():
             item = self.iterations_layout.takeAt(0)
             if item.widget():
@@ -588,6 +606,8 @@ class LinearProblemInput(QMainWindow):
         self.iteration_tables.clear()
 
         new_table = QTableWidget()
+        # 🔥 Запрещаем таблице сжиматься по вертикали
+        new_table.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         new_table.setSelectionBehavior(QTableWidget.SelectItems)
         new_table.itemClicked.connect(self.on_table_cell_clicked)
         new_table.setRowCount(self.m_constrs + 1)
@@ -599,7 +619,6 @@ class LinearProblemInput(QMainWindow):
         v_labels = [f"x{self.n_vars + i + 1}" for i in range(self.m_constrs)] + ["F"]
         new_table.setVerticalHeaderLabels(v_labels)
 
-        # Заполняем матрицу A и вектор b
         for i in range(self.m_constrs):
             for j in range(self.n_vars):
                 val = str(self.matrix_A[i][j])
@@ -612,7 +631,6 @@ class LinearProblemInput(QMainWindow):
             item_b.setFlags(item_b.flags() & ~Qt.ItemIsEditable)
             new_table.setItem(i, self.n_vars, item_b)
 
-        # Считаем начальную строку F
         for c in range(new_table.columnCount()):
             col_sum = 0.0
             for r in range(self.m_constrs):
@@ -627,12 +645,10 @@ class LinearProblemInput(QMainWindow):
             f_item.setFlags(f_item.flags() & ~Qt.ItemIsEditable)
             new_table.setItem(self.m_constrs, c, f_item)
 
-        # Добавляем заголовок и таблицу в вертикальный стек
         self.iterations_layout.addWidget(QLabel(f"<b>🔹 Итерация 0 (Начальный базис)</b>"))
         self.iterations_layout.addWidget(new_table)
         self.iteration_tables.append(new_table)
 
-        # Сброс выбора
         self.selected_table_widget = None
         self.selected_row = -1
         self.selected_col = -1
@@ -816,7 +832,6 @@ class LinearProblemInput(QMainWindow):
         rows = current_table.rowCount()
         cols = current_table.columnCount()
 
-        # 1. Читаем текущую таблицу в память
         table_data = []
         for r in range(rows):
             row_vals = []
@@ -830,7 +845,6 @@ class LinearProblemInput(QMainWindow):
         pivot_val = table_data[pivot_row][pivot_col]
         if pivot_val == 0: return
 
-        # 2. Применяем симплекс-преобразования
         for c in range(cols):
             table_data[pivot_row][c] /= pivot_val
         for r in range(rows):
@@ -839,8 +853,9 @@ class LinearProblemInput(QMainWindow):
             for c in range(cols):
                 table_data[r][c] -= multiplier * table_data[pivot_row][c]
 
-        # 3. Создаём новую таблицу
         new_table = QTableWidget()
+        # 🔥 Сохраняем поведение "не сжиматься" для всех новых итераций
+        new_table.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         new_table.setSelectionBehavior(QTableWidget.SelectItems)
         new_table.itemClicked.connect(self.on_table_cell_clicked)
         new_table.setRowCount(rows)
@@ -850,7 +865,7 @@ class LinearProblemInput(QMainWindow):
         new_table.setHorizontalHeaderLabels(h_labels)
 
         v_labels = [current_table.verticalHeaderItem(r).text() for r in range(rows)]
-        v_labels[pivot_row] = h_labels[pivot_col]  # Обновляем базисную переменную
+        v_labels[pivot_row] = h_labels[pivot_col]
         new_table.setVerticalHeaderLabels(v_labels)
 
         for r in range(rows):
@@ -859,13 +874,11 @@ class LinearProblemInput(QMainWindow):
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 new_table.setItem(r, c, item)
 
-        # 4. Добавляем в стек (снизу)
         iter_num = len(self.iteration_tables)
         self.iterations_layout.addWidget(QLabel(f"<b>🔹 Итерация {iter_num}</b>"))
         self.iterations_layout.addWidget(new_table)
         self.iteration_tables.append(new_table)
 
-        # Сброс выделения
         self.selected_table_widget = None
         self.selected_row = -1
         self.selected_col = -1
