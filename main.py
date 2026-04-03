@@ -28,6 +28,8 @@ class LinearProblemInput(QMainWindow):
         self.selected_col = -1
         self.solution_history = []
 
+        self.iteration_tables = []
+
         self.init_ui()
 
     def init_ui(self):
@@ -182,26 +184,26 @@ class LinearProblemInput(QMainWindow):
 
     # === ВКЛАДКА 2: МЕТОД ИСКУССТВЕННОГО БАЗИСА ===
     def _init_artificial_tab(self):
-        """Инициализация вкладки с симплекс-таблицами"""
+        """Инициализация вкладки с симплекс-TABLEами"""
         layout = QVBoxLayout(self.tab_artificial)
 
-        # КНОПКИ
+        # === КНОПКИ УПРАВЛЕНИЯ ===
         control_group = QGroupBox("Управление решением")
         control_layout = QHBoxLayout()
 
-        self.btn_step_forward = QPushButton("-> Шаг вперёд")
+        self.btn_step_forward = QPushButton("➡ Шаг вперёд")
         self.btn_step_forward.clicked.connect(self.on_step_forward)
         self.btn_step_forward.setEnabled(False)
 
-        self.btn_step_back = QPushButton("<- Шаг назад")
+        self.btn_step_back = QPushButton("⬅ Шаг назад")
         self.btn_step_back.clicked.connect(self.on_step_back)
         self.btn_step_back.setEnabled(False)
 
-        self.btn_auto_solve = QPushButton("Автоматическое решение")
+        self.btn_auto_solve = QPushButton("🚀 Автоматическое решение")
         self.btn_auto_solve.clicked.connect(self.on_auto_solve)
         self.btn_auto_solve.setEnabled(False)
 
-        self.btn_select_pivot = QPushButton("Выбрать опорный элемент")
+        self.btn_select_pivot = QPushButton("🎯 Выбрать опорный элемент")
         self.btn_select_pivot.clicked.connect(self.on_select_pivot)
         self.btn_select_pivot.setEnabled(False)
 
@@ -210,42 +212,30 @@ class LinearProblemInput(QMainWindow):
         control_layout.addWidget(self.btn_auto_solve)
         control_layout.addWidget(self.btn_select_pivot)
         control_layout.addStretch()
-
         control_group.setLayout(control_layout)
         layout.addWidget(control_group)
 
-        # Таблица
-        # инициализация
-        #self.simplex_table = QTableWidget()
-        #self.simplex_table.setMinimumHeight(400)
-        #layout.addWidget(self.simplex_table)
-
-        fisrt_table_isc_group = QGroupBox("Вспомогательная задача")
-        newf_layout = QVBoxLayout()
-
-        # F = x5 + x6 -> min
+        # === БЛОК ИНФОРМАЦИИ О ВСПОМОГАТЕЛЬНОЙ ЗАДАЧЕ ===
+        info_group = QGroupBox("Вспомогательная задача")
+        info_layout = QVBoxLayout()
         self.newF = QLabel()
-        newf_layout.addWidget(self.newF)
-
-        # x* = (0,0,0,0,4,1)
         self.newF_res = QLabel()
-        newf_layout.addWidget(self.newF_res)
+        info_layout.addWidget(self.newF)
+        info_layout.addWidget(self.newF_res)
+        info_group.setLayout(info_layout)
+        layout.addWidget(info_group)
 
-        # Первая x*0 таблица
-        self.x0isc_group = QGroupBox("X*0 таблица")
-        self.x0isc_table_layout = QVBoxLayout()
+        # === ТАБЛИЦЫ ИТЕРАЦИЙ (QTabWidget) ===
+        tables_group = QGroupBox("Итерации симплекс-метода")
+        tables_layout = QVBoxLayout()
 
+        self.tables_tabs = QTabWidget()
+        self.tables_tabs.setTabsClosable(False)
+        self.tables_tabs.setMovable(False)
+        tables_layout.addWidget(self.tables_tabs)
 
-        layout.addWidget(fisrt_table_isc_group)
-        fisrt_table_isc_group.setLayout(newf_layout)
-
-        self.x0isc_table = QTableWidget()
-        self.x0isc_table.setSelectionBehavior(QTableWidget.SelectItems)
-        self.x0isc_table.itemClicked.connect(self.on_table_cell_clicked)
-        self.x0isc_table_layout.addWidget(self.x0isc_table)
-        self.x0isc_group.setLayout(self.x0isc_table_layout)
-        layout.addWidget(self.x0isc_group)
-
+        tables_group.setLayout(tables_layout)
+        layout.addWidget(tables_group)
         layout.addStretch()
 
     # === ВКЛАДКА 3: ГРАФИЧЕСКИЙ МЕТОД ===
@@ -585,65 +575,55 @@ class LinearProblemInput(QMainWindow):
         self.newF_res.setText(formula2)
 
     def update_x0isc_table(self):
+        """Создание начальной симплекс-таблицы (Итерация 0)"""
+        # Очищаем старые вкладки, если были
+        self.tables_tabs.clear()
+        self.iteration_tables.clear()
 
-        #self.x0isc_table = QTableWidget()
-        # newf_layout.addWidget(self.x0isc_table)
-
-        self.x0isc_table.setRowCount(self.m_constrs + 1)
-        self.x0isc_table.setColumnCount(self.n_vars + 1)
+        new_table = QTableWidget()
+        new_table.setSelectionBehavior(QTableWidget.SelectItems)
+        new_table.itemClicked.connect(self.on_table_cell_clicked)
+        new_table.setRowCount(self.m_constrs + 1)
+        new_table.setColumnCount(self.n_vars + 1)
 
         h_labels = [f"x{j + 1}" for j in range(self.n_vars)] + ["b"]
-        self.x0isc_table.setHorizontalHeaderLabels(h_labels)
+        new_table.setHorizontalHeaderLabels(h_labels)
 
-        v_labels = [f"x{self.n_vars + i + 1}" for i in range(self.m_constrs)]
-        v_labels.append("f")
-        self.x0isc_table.setVerticalHeaderLabels(v_labels)
+        v_labels = [f"x{self.n_vars + i + 1}" for i in range(self.m_constrs)] + ["F"]
+        new_table.setVerticalHeaderLabels(v_labels)
 
-        # Заполняем матрицу А
+        # Заполняем матрицу A и вектор b
         for i in range(self.m_constrs):
             for j in range(self.n_vars):
-                value = self.matrix_A[i][j]
-                item = QTableWidgetItem(str(value))
+                val = str(self.matrix_A[i][j])
+                item = QTableWidgetItem(val)
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                self.x0isc_table.setItem(i, j, item)
+                new_table.setItem(i, j, item)
 
-            b_value = self.vector_b[i]
-            item_b = QTableWidgetItem(str(b_value))
+            b_val = str(self.vector_b[i])
+            item_b = QTableWidgetItem(b_val)
             item_b.setFlags(item_b.flags() & ~Qt.ItemIsEditable)
-            self.x0isc_table.setItem(i, self.n_vars, item_b)
+            new_table.setItem(i, self.n_vars, item_b)
 
-            # item = self.x0isc_table.item(0, 1)
-            # print(item.text())
+        # Считаем начальную строку F = -sum(строк ограничений)
+        for c in range(new_table.columnCount()):
+            col_sum = 0.0
+            for r in range(self.m_constrs):
+                item = new_table.item(r, c)
+                if item and item.text():
+                    try:
+                        col_sum += float(item.text())
+                    except ValueError:
+                        pass
+            f_val = -col_sum
+            f_item = QTableWidgetItem(str(f_val))
+            f_item.setFlags(f_item.flags() & ~Qt.ItemIsEditable)
+            new_table.setItem(self.m_constrs, c, f_item)
 
-        '''
-        for r in range (self.x0isc_table.rowCount()):
-            for c in range (self.x0isc_table.columnCount()):
-                item = self.x0isc_table.item(r, c)
-                if item is not None:
-                    #print(item.text())
-                else:
-                    # print("None")
-                    # item.setText("")
-        '''
-
-        # Высчитываем f как сумму столбца со знаком минус
-        for c in range(self.x0isc_table.columnCount()):
-            sum_of_cols = 0
-            for r in range (self.m_constrs):
-                item = self.x0isc_table.item(r, c)
-                if item:
-                    text = item.text()
-                    if text:  # Проверка на пустую строку
-                        sum_of_cols += float(text)
-            f_row_index = self.m_constrs
-            f_value = -sum_of_cols
-            f_item = QTableWidgetItem(str(f_value))
-            f_item.setFlags(f_item.flags() & ~Qt.ItemIsEditable)  # Делаем не редактируемым
-            self.x0isc_table.setItem(f_row_index, c, f_item)
-
-
-
-            # ============================================================
+        # Добавляем как первую вкладку
+        self.tables_tabs.addTab(new_table, "Итерация 0")
+        self.iteration_tables.append(new_table)
+        self.tables_tabs.setCurrentIndex(0)
 
     # выбор опорной ячейки в таблице
     def on_table_cell_clicked(self, item):
@@ -665,36 +645,17 @@ class LinearProblemInput(QMainWindow):
 
     # не мой код
     def on_step_back(self):
-        """Возврат к предыдущей итерации (требование 6)"""
-
-        if len(self.solution_history) <= 1:
-            QMessageBox.information(self, "Инфо", "Нечего возвращать!")
+        """Возврат к предыдущей итерации"""
+        if len(self.iteration_tables) <= 1:
+            QMessageBox.information(self, "Инфо", "Нечего возвращать! Это начальная таблица.")
             return
 
-        # Удаляем текущее состояние
-        self.solution_history.pop()
+        # Удаляем последнюю таблицу из виджета и списка
+        self.iteration_tables.pop()
+        self.tables_tabs.removeTab(self.tables_tabs.count() - 1)
 
-        # Восстанавливаем предыдущее
-        prev_state = self.solution_history[-1]
-
-        self.x0isc_table.setRowCount(prev_state['row_count'])
-        self.x0isc_table.setColumnCount(prev_state['col_count'])
-
-        for r in range(prev_state['row_count']):
-            for c in range(prev_state['col_count']):
-                item = self.x0isc_table.item(r, c)
-                if not item:
-                    item = QTableWidgetItem()
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                    self.x0isc_table.setItem(r, c, item)
-
-                value = prev_state['data'][r][c] if r < len(prev_state['data']) and c < len(
-                    prev_state['data'][r]) else "0"
-                item.setText(value)
-
-        # Пересчитываем F для безопасности
-        self.recalculate_f_row()
-
+        # Переключаемся на предыдущую вкладку
+        self.tables_tabs.setCurrentIndex(len(self.iteration_tables) - 1)
         QMessageBox.information(self, "Успех", "Возврат выполнен!")
 
     def on_auto_solve(self):
@@ -751,22 +712,24 @@ class LinearProblemInput(QMainWindow):
     # Писала не сама
     def on_select_pivot(self):
         """Обработка кнопки выбора опорного элемента"""
-        # ячейка не выбрана
+        if not self.iteration_tables:
+            QMessageBox.warning(self, "Внимание", "Сначала решите задачу!")
+            return
+
+        current_table = self.iteration_tables[-1]
+
         if self.selected_row == -1 or self.selected_col == -1:
             QMessageBox.warning(self, "Внимание", "Сначала выберите ячейку в таблице!")
             return
 
         row, col = self.selected_row, self.selected_col
-        # выбрали не ту ячейку, например в f строке
         if row >= self.m_constrs:
-            QMessageBox.warning(self, "Внимание",
-                                f"Опорный элемент должен быть в строке ограничений!")
+            QMessageBox.warning(self, "Внимание", "Опорный элемент должен быть в строке ограничений!")
             return
 
-        # плохая ячейка
-        pivot_itm = self.x0isc_table.item(row, col)
+        pivot_itm = current_table.item(row, col)
         if not pivot_itm or not pivot_itm.text():
-            QMessageBox.warning(self, "Внимание", "Ячейка пуста или содержит некорректные данные!")
+            QMessageBox.warning(self, "Внимание", "Ячейка пуста!")
             return
 
         try:
@@ -779,7 +742,7 @@ class LinearProblemInput(QMainWindow):
             QMessageBox.warning(self, "Внимание", "Опорный элемент должен быть > 0!")
             return
 
-        f_itm = self.x0isc_table.item(self.m_constrs, col)
+        f_itm = current_table.item(self.m_constrs, col)
         if f_itm and f_itm.text():
             try:
                 if float(f_itm.text()) >= 0:
@@ -789,11 +752,10 @@ class LinearProblemInput(QMainWindow):
                 pass
 
         try:
-            self.save_table_state()
             self.perform_pivot(row, col)
             QMessageBox.information(self, "Успех", f"Итерация выполнена!\nОпорный: строка {row}, столбец {col}")
         except Exception as e:
-            QMessageBox.critical(self, "Критическая ошибка", f"Сбой симплекс-преобразования:\n{str(e)}")
+            QMessageBox.critical(self, "Критическая ошибка", f"Сбой преобразования:\n{str(e)}")
 
     # Доп функции, не мои
     def save_table_state(self):
@@ -817,18 +779,17 @@ class LinearProblemInput(QMainWindow):
             self.solution_history.pop(0)
 
     def perform_pivot(self, pivot_row, pivot_col):
-        """Выполнение симплекс-преобразования (безопасная версия)"""
-        self.x0isc_table.blockSignals(True)
+        """Создаёт новую таблицу после симплекс-преобразования"""
+        current_table = self.iteration_tables[-1]
+        rows = current_table.rowCount()
+        cols = current_table.columnCount()
 
-        rows = self.x0isc_table.rowCount()
-        cols = self.x0isc_table.columnCount()
-
-        # 🔥 1. Считываем ВСЮ таблицу в память
+        # 1. Читаем текущую таблицу в память
         table_data = []
         for r in range(rows):
             row_vals = []
             for c in range(cols):
-                itm = self.x0isc_table.item(r, c)
+                itm = current_table.item(r, c)
                 try:
                     val = float(itm.text()) if itm and itm.text() else 0.0
                 except ValueError:
@@ -838,14 +799,14 @@ class LinearProblemInput(QMainWindow):
 
         pivot_val = table_data[pivot_row][pivot_col]
         if pivot_val == 0:
-            self.x0isc_table.blockSignals(False)
             return
 
-        # 🔥 2. Нормализуем ведущую строку
+        # 2. Применяем симплекс-преобразования
+        # Нормализуем ведущую строку
         for c in range(cols):
             table_data[pivot_row][c] /= pivot_val
 
-        # 🔥 3. Обнуляем столбец в остальных строках
+        # Обнуляем столбец в остальных строках
         for r in range(rows):
             if r == pivot_row:
                 continue
@@ -853,31 +814,47 @@ class LinearProblemInput(QMainWindow):
             for c in range(cols):
                 table_data[r][c] -= multiplier * table_data[pivot_row][c]
 
-        # 🔥 4. Записываем обратно
+        # 3. Создаём новую таблицу
+        new_table = QTableWidget()
+        new_table.setSelectionBehavior(QTableWidget.SelectItems)
+        new_table.itemClicked.connect(self.on_table_cell_clicked)
+        new_table.setRowCount(rows)
+        new_table.setColumnCount(cols)
+
+        # Копируем заголовки
+        h_labels = []
+        for c in range(cols):
+            h_itm = current_table.horizontalHeaderItem(c)
+            h_labels.append(h_itm.text() if h_itm else f"x{c + 1}")
+        new_table.setHorizontalHeaderLabels(h_labels)
+
+        v_labels = []
+        for r in range(rows):
+            v_itm = current_table.verticalHeaderItem(r)
+            v_labels.append(v_itm.text() if v_itm else f"r{r}")
+
+        # Обновляем базисную переменную в заголовке строки
+        new_base_var = h_labels[pivot_col]
+        v_labels[pivot_row] = new_base_var
+        new_table.setVerticalHeaderLabels(v_labels)
+
+        # Заполняем данными
         for r in range(rows):
             for c in range(cols):
                 val = round(table_data[r][c], 6)
-                itm = self.x0isc_table.item(r, c)
-                if not itm:
-                    itm = QTableWidgetItem()
-                    itm.setFlags(itm.flags() & ~Qt.ItemIsEditable)
-                    self.x0isc_table.setItem(r, c, itm)
-                itm.setText(str(val))
+                item = QTableWidgetItem(str(val))
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                new_table.setItem(r, c, item)
 
-        self.x0isc_table.blockSignals(False)
+        # 4. Добавляем новую вкладку
+        iter_num = len(self.iteration_tables)
+        self.tables_tabs.addTab(new_table, f"Итерация {iter_num}")
+        self.iteration_tables.append(new_table)
+        self.tables_tabs.setCurrentIndex(iter_num)
 
-        # Обновляем метки и строку F
-        self.update_row_labels_after_pivot(pivot_row, pivot_col)
-        self.recalculate_f_row()
-
+        # Сброс выделения
         self.selected_row = -1
         self.selected_col = -1
-        # Сброс подсветки
-        for r in range(rows):
-            for c in range(cols):
-                itm = self.x0isc_table.item(r, c)
-                if itm:
-                    itm.setBackground(Qt.white)
 
     def recalculate_f_row(self):
         """Пересчёт строки F"""
