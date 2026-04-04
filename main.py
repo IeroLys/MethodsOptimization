@@ -40,22 +40,26 @@ class LinearProblemInput(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
-        # === Создаём вкладки ===
+        # Создаём вкладки
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
 
-        # === Вкладка 1: Условия задачи ===
+        # Вкладка 1: Условия задачи ===
         self.tab_conditions = QWidget()
         self.tabs.addTab(self.tab_conditions, "Условия задачи")
         self._init_conditions_tab()
 
-        # === Вкладка 2: Метод искусственного базиса ===
+        # Вкладка 2: Метод искусственного базиса ===
         self.tab_artificial = QWidget()
         self.tabs.addTab(self.tab_artificial, "Метод искусственного базиса")
         self._init_artificial_tab()
 
+        # Вкладка 3: Симплекс метод
+        self.tab_simplex_method = QWidget()
+        self.tabs.addTab(self.tab_simplex_method, "Симплекс метод")
+        self._init_simplex_method_tab()
 
-    # === ВКЛАДКА 1: УСЛОВИЯ ЗАДАЧИ ===
+    # ВКЛАДКА 1: УСЛОВИЯ ЗАДАЧИ
     def _init_conditions_tab(self):
         layout = QVBoxLayout(self.tab_conditions)
 
@@ -179,7 +183,7 @@ class LinearProblemInput(QMainWindow):
         # создание таблиц и текста по размерности и её изменении
         self.on_razmernost_changed()
 
-    # === ВКЛАДКА 2: МЕТОД ИСКУССТВЕННОГО БАЗИСА ===
+    # ВКЛАДКА 2: МЕТОД ИСКУССТВЕННОГО БАЗИСА
     def _init_artificial_tab(self):
         layout = QVBoxLayout(self.tab_artificial)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -245,9 +249,13 @@ class LinearProblemInput(QMainWindow):
 
         scroll_layout.addStretch()
 
+    # ВКЛАДКА 3: СИМПЛЕКС МЕТОД
+    def _init_simplex_method_tab(self):
+        layout = QVBoxLayout(self.tab_simplex_method)
+
     """ Первая вкладка """
+    #+ обновление данных при изменении размерности
     def on_razmernost_changed(self):
-        """Пересоздание таблицы и обновление текста задачи при изменении размерности"""
         self.n_vars = self.n_spin.value()
         self.m_constrs = self.m_spin.value()
 
@@ -255,25 +263,25 @@ class LinearProblemInput(QMainWindow):
         self._update_matrix_table()
         self.update_problem_text()
 
-    # Плашки с C коэффициентами
+    #+ Плашки с C коэффициентами
     def _update_c_inputs(self):
-        """Обновление полей ввода коэффициентов целевой функции"""
+        # очищаем сначала
         while self.c_layout.count():
             item = self.c_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            item.widget().deleteLater()
         self.c_inputs = []
 
         for j in range(self.n_vars):
             label = QLabel(f"c{j + 1}:")
             edit = QLineEdit()
-            edit.setPlaceholderText("0")
+            edit.setPlaceholderText("0") # серым текстом
             edit.setValidator(QRegularExpressionValidator(
                 QRegularExpression(r"^-?\d*\.?\d*(/\d+)?$")))
 
-            # обновление текста при вводе коэффициентов
+            # обновление постановки задачи при вводе коэффициентов
             edit.textChanged.connect(self.update_problem_text)
 
+            # а теперь добавляем
             self.c_layout.addWidget(label)
             self.c_layout.addWidget(edit)
             self.c_inputs.append(edit)
@@ -494,7 +502,6 @@ class LinearProblemInput(QMainWindow):
 
     # Кнопка Очистить
     def clear_all(self):
-        """Очистка всех полей"""
         reply = QMessageBox.question(self, "Подтверждение",
                                      "Очистить все данные?", QMessageBox.Yes | QMessageBox.No)
 
@@ -613,38 +620,6 @@ class LinearProblemInput(QMainWindow):
 
 
 
-    # === ЗАГЛУШКИ ДЛЯ ВТОРОЙ И ТРЕТЬЕЙ ВКЛАДОК ===
-
-    # не мой код
-    def on_step_back(self):
-        """Возврат к предыдущей итерации (удаляет последнюю таблицу снизу)"""
-        if len(self.iteration_tables) <= 1:
-            QMessageBox.information(self, "Инфо", "Нечего возвращать! Это начальная таблица.")
-            return
-
-        # Удаляем последнюю таблицу и её заголовок из layout
-        # Layout хранит элементы в порядке: Label, Table, Label, Table...
-        # Берём последние 2 элемента (Table, затем Label)
-
-        # 1. Удаляем таблицу
-        last_item = self.iterations_layout.takeAt(self.iterations_layout.count() - 1)
-        if last_item and last_item.widget():
-            last_item.widget().deleteLater()
-
-        # 2. Удаляем заголовок
-        label_item = self.iterations_layout.takeAt(self.iterations_layout.count() - 1)
-        if label_item and label_item.widget():
-            label_item.widget().deleteLater()
-
-        self.iteration_tables.pop()
-
-        # Сброс выбора
-        self.selected_table_widget = None
-        self.selected_row = -1
-        self.selected_col = -1
-
-        QMessageBox.information(self, "Успех", "Возврат выполнен!")
-
     # не готово
     def on_auto_solve(self):
         self.step_info.append("🚀 Запуск автоматического решения...")
@@ -697,7 +672,65 @@ class LinearProblemInput(QMainWindow):
         
         '''
 
-    # Писала не сама
+        # не мой код
+        def on_step_back(self):
+            """Возврат к предыдущей итерации (удаляет последнюю таблицу снизу)"""
+            if len(self.iteration_tables) <= 1:
+                QMessageBox.information(self, "Инфо", "Нечего возвращать! Это начальная таблица.")
+                return
+
+            # Удаляем последнюю таблицу и её заголовок из layout
+            # Layout хранит элементы в порядке: Label, Table, Label, Table...
+            # Берём последние 2 элемента (Table, затем Label)
+
+            # 1. Удаляем таблицу
+            last_item = self.iterations_layout.takeAt(self.iterations_layout.count() - 1)
+            if last_item and last_item.widget():
+                last_item.widget().deleteLater()
+
+            # 2. Удаляем заголовок
+            label_item = self.iterations_layout.takeAt(self.iterations_layout.count() - 1)
+            if label_item and label_item.widget():
+                label_item.widget().deleteLater()
+
+            self.iteration_tables.pop()
+
+            # Сброс выбора
+            self.selected_table_widget = None
+            self.selected_row = -1
+            self.selected_col = -1
+
+            QMessageBox.information(self, "Успех", "Возврат выполнен!")
+
+    def on_step_back(self):
+        """Возврат к предыдущей итерации (удаляет последнюю таблицу снизу)"""
+        if len(self.iteration_tables) <= 1:
+            QMessageBox.information(self, "Инфо", "Нечего возвращать! Это начальная таблица.")
+            return
+
+        # Удаляем последнюю таблицу и её заголовок из layout
+        # Layout хранит элементы в порядке: Label, Table, Label, Table...
+        # Берём последние 2 элемента (Table, затем Label)
+
+        # 1. Удаляем таблицу
+        last_item = self.iterations_layout.takeAt(self.iterations_layout.count() - 1)
+        if last_item and last_item.widget():
+            last_item.widget().deleteLater()
+
+        # 2. Удаляем заголовок
+        label_item = self.iterations_layout.takeAt(self.iterations_layout.count() - 1)
+        if label_item and label_item.widget():
+            label_item.widget().deleteLater()
+
+        self.iteration_tables.pop()
+
+        # Сброс выбора
+        self.selected_table_widget = None
+        self.selected_row = -1
+        self.selected_col = -1
+
+        QMessageBox.information(self, "Успех", "Возврат выполнен!")
+
     # Кнопка Выбрать опорный элемент
     def on_select_opor(self):
         if not self.iteration_tables:
@@ -749,7 +782,8 @@ class LinearProblemInput(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Критическая ошибка", f"Сбой преобразования:\n{str(e)}")
 
-    # Доп функции, не мои
+    """ Доп.функции """
+
     def save_table_state(self):
         """Сохранение текущего состояния таблицы для возврата назад"""
         state = {
