@@ -222,7 +222,7 @@ class LinearProblemInput(QMainWindow):
         self.btn_auto_solve.setEnabled(False)
 
         self.btn_to_simplex = QPushButton("Построить симплекс-таблицу")
-        self.btn_to_simplex.clicked.connect(self.build_initial_simplex_table)
+        self.btn_to_simplex.clicked.connect(self.build_x0_table)
         self.btn_to_simplex.setEnabled(False)
 
         control_layout.addWidget(self.btn_step_back)
@@ -264,25 +264,34 @@ class LinearProblemInput(QMainWindow):
 
     # ВКЛАДКА 3: СИМПЛЕКС МЕТОД
     def _init_simplex_method_tab(self):
+        """Инициализация вкладки симплекс-метода (минимальный вариант)"""
         layout = QVBoxLayout(self.tab_simplex_method)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # Скролл-область
         self.simplex_scroll = QScrollArea()
         self.simplex_scroll.setWidgetResizable(True)
         layout.addWidget(self.simplex_scroll)
+
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setAlignment(Qt.AlignTop)
         self.simplex_scroll.setWidget(scroll_content)
 
-        # Кнопки управления
-        control_group = QGroupBox()
+        # === КНОПКИ УПРАВЛЕНИЯ ===
+        control_group = QGroupBox("")
         control_layout = QHBoxLayout()
+
         self.simplex_btn_back = QPushButton("Шаг назад")
+        self.simplex_btn_back.clicked.connect(self.simplex_on_step_back)
         self.simplex_btn_back.setEnabled(False)
+
         self.simplex_btn_select = QPushButton("Выбрать опорный элемент")
+        self.simplex_btn_select.clicked.connect(self.simplex_on_select_opor)
         self.simplex_btn_select.setEnabled(False)
+
         self.simplex_btn_auto = QPushButton("Автоматическое решение")
+        self.simplex_btn_auto.clicked.connect(self.simplex_auto_solve)
         self.simplex_btn_auto.setEnabled(False)
 
         control_layout.addWidget(self.simplex_btn_back)
@@ -292,43 +301,22 @@ class LinearProblemInput(QMainWindow):
         control_group.setLayout(control_layout)
         scroll_layout.addWidget(control_group)
 
-        # Контейнер для таблиц итераций
+        # === ТАБЛИЦЫ ИТЕРАЦИЙ ===
+        tables_group = QGroupBox("Итерации")
+        tables_layout = QVBoxLayout()
+
         self.simplex_iterations_container = QWidget()
+        self.simplex_iterations_container.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+
         self.simplex_iterations_layout = QVBoxLayout(self.simplex_iterations_container)
         self.simplex_iterations_layout.setSpacing(15)
         self.simplex_iterations_layout.setAlignment(Qt.AlignTop)
-        scroll_layout.addWidget(self.simplex_iterations_container)
 
-        # Подключаем кнопки
-        self.simplex_btn_back.clicked.connect(self.simplex_on_step_back)
-        self.simplex_btn_select.clicked.connect(self.simplex_on_select_opor)
-        self.simplex_btn_auto.clicked.connect(self.simplex_auto_solve)
+        tables_layout.addWidget(self.simplex_iterations_container)
+        tables_group.setLayout(tables_layout)
+        scroll_layout.addWidget(tables_group)
 
-    def display_simplex_table(self, table):
-        """Отображает переданную таблицу на вкладке симплекс-метода как первую итерацию."""
-        # Очищаем старые таблицы
-        while self.simplex_iterations_layout.count():
-            item = self.simplex_iterations_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        self.simplex_tables.clear()
-
-        self.simplex_iterations_layout.addWidget(QLabel("<b>Итерация 0 (начальная симплекс-таблица)</b>"))
-        self.simplex_iterations_layout.addWidget(table)
-        self.simplex_tables.append(table)
-
-        # Подключаем обработчик клика по ячейке для выбора опорного элемента
-        table.itemClicked.connect(self.simplex_on_cell_clicked)
-
-        # Активируем кнопки
-        self.simplex_btn_back.setEnabled(True)
-        self.simplex_btn_select.setEnabled(True)
-        self.simplex_btn_auto.setEnabled(True)
-
-        # Сбрасываем выбор
-        self.simplex_selected_row = -1
-        self.simplex_selected_col = -1
-        self.simplex_selected_table = None
+        scroll_layout.addStretch()
 
     """ Первая вкладка """
     #+ обновление данных при изменении размерности
@@ -777,12 +765,12 @@ class LinearProblemInput(QMainWindow):
         try:
             opor_itm.setBackground(QColor("pink"))
             current_table.clearSelection()
-            self.perform_opor()
             QMessageBox.information(self, "Успех", f"Итерация выполнена!")
+            self.perform_opor()
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Сбой преобразования:\n{str(e)}")
 
-    # Итерации
+    #+- Итерации
     def perform_opor(self):
         # копируем данные
         current_table = self.iteration_tables[-1]
@@ -949,23 +937,9 @@ class LinearProblemInput(QMainWindow):
     """ Третья вкладка """
 
     # построение x0 таблицы
-    def _extract_basis_from_table(self, table):
-        """Извлекает базисные переменные и их значения из последней симплекс-таблицы."""
-        rows = table.rowCount()
-        cols = table.columnCount()
-        self.last_artificial_basis = []
-        self.last_artificial_solution = []
-        # Базисные переменные – это те, что в заголовках строк (кроме последней)
-        for r in range(rows - 1):  # последняя строка – F
-            var_name = table.verticalHeaderItem(r).text()
-            self.last_artificial_basis.append(var_name)
-            # Значение базисной переменной – в столбце "b"
-            b_item = table.item(r, cols - 1)
-            val = self.parse_fraction(b_item.text()) if b_item else Fraction(0)
-            self.last_artificial_solution.append(val)
-
-    def build_initial_simplex_table(self):
+    def build_x0_table(self):
         """Строит первую симплекс-таблицу для исходной задачи на основе последней таблицы искусственного метода."""
+
         if self.last_artificial_table is None:
             QMessageBox.warning(self, "Нет данных",
                                 "Сначала решите задачу методом искусственного базиса до конца.")
@@ -1152,7 +1126,44 @@ class LinearProblemInput(QMainWindow):
         simplex_table.setItem(m, n, f_right_item)
 
         # Отображаем таблицу на вкладке симплекс-метода
-        self.display_simplex_table(simplex_table)
+        # Очищаем старые таблицы
+        while self.simplex_iterations_layout.count():
+            item = self.simplex_iterations_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self.simplex_tables.clear()
+
+        self.simplex_iterations_layout.addWidget(QLabel("<b>Итерация 0 (начальная симплекс-таблица)</b>"))
+        self.simplex_iterations_layout.addWidget(simplex_table)
+        self.simplex_tables.append(simplex_table)
+
+        # Подключаем обработчик клика по ячейке для выбора опорного элемента
+        simplex_table.itemClicked.connect(self.simplex_on_cell_clicked)
+
+        # Активируем кнопки
+        self.simplex_btn_back.setEnabled(True)
+        self.simplex_btn_select.setEnabled(True)
+        self.simplex_btn_auto.setEnabled(True)
+
+        # Сбрасываем выбор
+        self.simplex_selected_row = -1
+        self.simplex_selected_col = -1
+        self.simplex_selected_table = None
+
+    def _extract_basis_from_table(self, table):
+        """Извлекает базисные переменные и их значения из последней симплекс-таблицы."""
+        rows = table.rowCount()
+        cols = table.columnCount()
+        self.last_artificial_basis = []
+        self.last_artificial_solution = []
+        # Базисные переменные – это те, что в заголовках строк (кроме последней)
+        for r in range(rows - 1):  # последняя строка – F
+            var_name = table.verticalHeaderItem(r).text()
+            self.last_artificial_basis.append(var_name)
+            # Значение базисной переменной – в столбце "b"
+            b_item = table.item(r, cols - 1)
+            val = self.parse_fraction(b_item.text()) if b_item else Fraction(0)
+            self.last_artificial_solution.append(val)
 
     #+ выбор опорной ячейки в симплекс таблице
     def simplex_on_cell_clicked(self, item):
@@ -1206,8 +1217,8 @@ class LinearProblemInput(QMainWindow):
         try:
             opor_itm.setBackground(QColor("pink"))
             current_table.clearSelection()
-            self.simplex_perform_opor()
             QMessageBox.information(self, "Успех", "Итерация выполнена!")
+            self.simplex_perform_opor()
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Сбой преобразования:\n{str(e)}")
 
@@ -1233,7 +1244,7 @@ class LinearProblemInput(QMainWindow):
 
         QMessageBox.information(self, "Готово", "Возврат выполнен!")
 
-    # итерации
+    #+- итерации
     def simplex_perform_opor(self):
         current_table = self.simplex_tables[-1]
         rows = current_table.rowCount()
@@ -1275,7 +1286,12 @@ class LinearProblemInput(QMainWindow):
         opor_el = table_data[r_opor][c_opor]
 
         # Новая матрица
-        new_data = [[Fraction(0) for _ in range(cols)] for _ in range(rows)]
+        new_data = []
+        for r in range(rows):
+            row = []
+            for c in range(cols):
+                row.append(Fraction(0))
+            new_data.append(row)
         new_data[r_opor][c_opor] = Fraction(1) / opor_el
 
         # Строка опорного элемента
