@@ -4,9 +4,9 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QGridLayout, QLabel, QLineEdit,
                              QSpinBox, QPushButton, QTableWidget, QTableWidgetItem,
                              QRadioButton, QButtonGroup, QMessageBox, QGroupBox,
-                             QFileDialog, QScrollArea, QTabWidget, QTextEdit)
+                             QFileDialog, QScrollArea, QTabWidget, QTextEdit, QSizePolicy)
 from PyQt5.QtCore import Qt, QRegularExpression
-from PyQt5.QtGui import QRegularExpressionValidator
+from PyQt5.QtGui import QRegularExpressionValidator, QBrush, QColor
 
 
 class LinearProblemInput(QMainWindow):
@@ -28,6 +28,10 @@ class LinearProblemInput(QMainWindow):
         self.selected_col = -1
         self.solution_history = []
 
+        # Для хранения всех таблиц итераций и текущей выбранной таблицы
+        self.iteration_tables = []
+        self.selected_table_widget = None
+
         self.init_ui()
 
     def init_ui(self):
@@ -36,28 +40,26 @@ class LinearProblemInput(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
-        # === Создаём вкладки ===
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
 
-        # === Вкладка 1: Условия задачи ===
+        # Вкладка 1: Условия задачи
         self.tab_conditions = QWidget()
         self.tabs.addTab(self.tab_conditions, "Условия задачи")
         self._init_conditions_tab()
 
-        # === Вкладка 2: Метод искусственного базиса ===
+        # Вкладка 2: Метод искусственного базиса
         self.tab_artificial = QWidget()
         self.tabs.addTab(self.tab_artificial, "Метод искусственного базиса")
         self._init_artificial_tab()
 
-        # === Вкладка 3: Графический метод ===
-        self.tab_graphic = QWidget()
-        self.tabs.addTab(self.tab_graphic, "Графический метод")
-        self._init_graphic_tab()
+        # Вкладка 3: Симплекс метод
+        self.tab_simplex_method = QWidget()
+        self.tabs.addTab(self.tab_simplex_method, "Симплекс метод")
+        self._init_simplex_method_tab()
 
-    # === ВКЛАДКА 1: УСЛОВИЯ ЗАДАЧИ ===
+    # ВКЛАДКА 1: УСЛОВИЯ ЗАДАЧИ
     def _init_conditions_tab(self):
-        """Инициализация первой вкладки с условиями задачи"""
         layout = QVBoxLayout(self.tab_conditions)
 
         # Верхняя часть: слева ввод, справа отображение задачи
@@ -76,14 +78,14 @@ class LinearProblemInput(QMainWindow):
         self.n_spin = QSpinBox()
         self.n_spin.setRange(1, 16)
         self.n_spin.setValue(4)
-        self.n_spin.valueChanged.connect(self.on_dimension_changed)
+        self.n_spin.valueChanged.connect(self.on_razmernost_changed)
         dim_layout.addWidget(self.n_spin, 0, 1)
 
         dim_layout.addWidget(QLabel("Количество ограничений (m):"), 1, 0)
         self.m_spin = QSpinBox()
         self.m_spin.setRange(1, 16)
         self.m_spin.setValue(2)
-        self.m_spin.valueChanged.connect(self.on_dimension_changed)
+        self.m_spin.valueChanged.connect(self.on_razmernost_changed)
         dim_layout.addWidget(self.m_spin, 1, 1)
 
         dim_group.setLayout(dim_layout)
@@ -94,8 +96,8 @@ class LinearProblemInput(QMainWindow):
         opt_layout = QVBoxLayout()
 
         self.opt_group = QButtonGroup()
-        self.min_radio = QRadioButton("min (минимизация)")
-        self.max_radio = QRadioButton("max (максимизация)")
+        self.min_radio = QRadioButton("min")
+        self.max_radio = QRadioButton("max")
         self.min_radio.setChecked(True)
         self.opt_group.addButton(self.min_radio)
         self.opt_group.addButton(self.max_radio)
@@ -139,13 +141,13 @@ class LinearProblemInput(QMainWindow):
         top_layout.addWidget(right_panel)
         layout.addLayout(top_layout)
 
-        # === НИЖНЯЯ ЧАСТЬ: Матрица ограничений ===
+        # Матрица ограничений
         matrix_group = QGroupBox("Матрица ограничений A и вектор b")
         matrix_layout = QVBoxLayout()
 
         self.table_widget = QTableWidget()
         self.table_widget.horizontalHeader().setStretchLastSection(True)
-
+        # Текст постановки задачи - справа
         self.table_widget.cellChanged.connect(self.update_problem_text)
 
         matrix_layout.addWidget(self.table_widget)
@@ -153,20 +155,20 @@ class LinearProblemInput(QMainWindow):
         matrix_group.setLayout(matrix_layout)
         layout.addWidget(matrix_group)
 
-        # === Кнопки управления ===
+        """ Кнопки управления """
         btn_layout = QHBoxLayout()
 
-        self.btn_solve = QPushButton("✓ Решить задачу")
+        self.btn_solve = QPushButton("Решить задачу")
         self.btn_solve.clicked.connect(self.validate_and_save)
         self.btn_solve.setMinimumHeight(40)
 
-        self.btn_save = QPushButton("💾 Сохранить в файл")
+        self.btn_save = QPushButton("Сохранить в файл")
         self.btn_save.clicked.connect(self.save_to_file)
 
-        self.btn_load = QPushButton("📂 Загрузить из файла")
+        self.btn_load = QPushButton("Загрузить из файла")
         self.btn_load.clicked.connect(self.load_from_file)
 
-        self.btn_clear = QPushButton("🗑 Очистить")
+        self.btn_clear = QPushButton("Очистить")
         self.btn_clear.clicked.connect(self.clear_all)
 
         btn_layout.addWidget(self.btn_solve)
@@ -177,117 +179,83 @@ class LinearProblemInput(QMainWindow):
 
         layout.addLayout(btn_layout)
 
-        # Инициализация при старте
-        self.on_dimension_changed()
+        # создание таблиц и текста по размерности и её изменении
+        self.on_razmernost_changed()
 
-    # === ВКЛАДКА 2: МЕТОД ИСКУССТВЕННОГО БАЗИСА ===
+    # ВКЛАДКА 2: МЕТОД ИСКУССТВЕННОГО БАЗИСА
     def _init_artificial_tab(self):
-        """Инициализация вкладки с симплекс-таблицами"""
         layout = QVBoxLayout(self.tab_artificial)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        # КНОПКИ
-        control_group = QGroupBox("Управление решением")
+        # Скролл
+        self.artificial_scroll = QScrollArea()
+        self.artificial_scroll.setWidgetResizable(True)
+        layout.addWidget(self.artificial_scroll)
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setAlignment(Qt.AlignTop)
+        self.artificial_scroll.setWidget(scroll_content)
+
+        # Кнопки управления
+        control_group = QGroupBox("")
         control_layout = QHBoxLayout()
 
-        self.btn_step_forward = QPushButton("➡ Шаг вперёд")
-        self.btn_step_forward.clicked.connect(self.on_step_forward)
-        self.btn_step_forward.setEnabled(False)
-
-        self.btn_step_back = QPushButton("⬅ Шаг назад")
+        self.btn_step_back = QPushButton("Шаг назад")
         self.btn_step_back.clicked.connect(self.on_step_back)
         self.btn_step_back.setEnabled(False)
 
-        self.btn_auto_solve = QPushButton("🚀 Автоматическое решение")
+        self.btn_select_opor = QPushButton("Выбрать опорный элемент")
+        self.btn_select_opor.clicked.connect(self.on_select_opor)
+        self.btn_select_opor.setEnabled(False)
+
+        self.btn_auto_solve = QPushButton("Автоматическое решение")
         self.btn_auto_solve.clicked.connect(self.on_auto_solve)
         self.btn_auto_solve.setEnabled(False)
 
-        self.btn_select_pivot = QPushButton("🎯 Выбрать опорный элемент")
-        self.btn_select_pivot.clicked.connect(self.on_select_pivot)
-        self.btn_select_pivot.setEnabled(False)
-
-        control_layout.addWidget(self.btn_step_forward)
         control_layout.addWidget(self.btn_step_back)
+        control_layout.addWidget(self.btn_select_opor)
         control_layout.addWidget(self.btn_auto_solve)
-        control_layout.addWidget(self.btn_select_pivot)
         control_layout.addStretch()
-
         control_group.setLayout(control_layout)
-        layout.addWidget(control_group)
+        scroll_layout.addWidget(control_group)
 
-        # Таблица
-        # инициализация
-        # self.simplex_table = QTableWidget()
-        # self.simplex_table.setMinimumHeight(400)
-        # layout.addWidget(self.simplex_table)
-
-        fisrt_table_isc_group = QGroupBox("Вспомогательная задача")
-        newf_layout = QVBoxLayout()
-
+        # === ИНФОРМАЦИЯ О ВСПОМОГАТЕЛЬНОЙ ЗАДАЧЕ ===
+        info_group = QGroupBox("Вспомогательная задача")
+        info_layout = QVBoxLayout()
         # F = x5 + x6 -> min
         self.newF = QLabel()
-        newf_layout.addWidget(self.newF)
-
         # x* = (0,0,0,0,4,1)
         self.newF_res = QLabel()
-        newf_layout.addWidget(self.newF_res)
+        info_layout.addWidget(self.newF)
+        info_layout.addWidget(self.newF_res)
+        info_group.setLayout(info_layout)
+        scroll_layout.addWidget(info_group)
 
-        # Первая x*0 таблица
-        self.x0isc_group = QGroupBox("X*0 таблица")
-        self.x0isc_table_layout = QVBoxLayout()
+        # Таблицы итераций
+        tables_group = QGroupBox("Итерации")
+        tables_layout = QVBoxLayout()
 
-        layout.addWidget(fisrt_table_isc_group)
-        fisrt_table_isc_group.setLayout(newf_layout)
+        self.iterations_container = QWidget()
+        self.iterations_container.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
 
-        self.x0isc_table = QTableWidget()
-        self.x0isc_table.setSelectionBehavior(QTableWidget.SelectItems)
-        self.x0isc_table.itemClicked.connect(self.on_table_cell_clicked)
-        self.x0isc_table_layout.addWidget(self.x0isc_table)
-        self.x0isc_group.setLayout(self.x0isc_table_layout)
-        layout.addWidget(self.x0isc_group)
+        self.iterations_layout = QVBoxLayout(self.iterations_container)
+        self.iterations_layout.setSpacing(15)
+        self.iterations_layout.setAlignment(Qt.AlignTop)
 
-        layout.addStretch()
+        tables_layout.addWidget(self.iterations_container)
+        tables_group.setLayout(tables_layout)
+        scroll_layout.addWidget(tables_group)
 
-    # === ВКЛАДКА 3: ГРАФИЧЕСКИЙ МЕТОД ===
-    def _init_graphic_tab(self):
-        """Инициализация вкладки с графиками"""
-        layout = QVBoxLayout(self.tab_graphic)
+        scroll_layout.addStretch()
 
-        header_label = QLabel("📊 Графический метод решения")
-        header_label.setFont(QApplication.font())
-        header_label.setStyleSheet("font-size: 16px; font-weight: bold;")
-        layout.addWidget(header_label)
+    # ВКЛАДКА 3: СИМПЛЕКС МЕТОД
+    def _init_simplex_method_tab(self):
+        layout = QVBoxLayout(self.tab_simplex_method)
 
-        mode_group = QGroupBox("Режим отображения")
-        mode_layout = QHBoxLayout()
+    """ Первая вкладка """
 
-        self.graph_2d_radio = QRadioButton("2D (две переменные)")
-        self.graph_3d_radio = QRadioButton("3D (три переменные)")
-        self.graph_2d_radio.setChecked(True)
-
-        mode_layout.addWidget(self.graph_2d_radio)
-        mode_layout.addWidget(self.graph_3d_radio)
-        mode_layout.addStretch()
-
-        mode_group.setLayout(mode_layout)
-        layout.addWidget(mode_group)
-
-        self.graph_placeholder = QLabel("🖼 Здесь будет отображаться график области допустимых решений")
-        self.graph_placeholder.setAlignment(Qt.AlignCenter)
-        self.graph_placeholder.setMinimumHeight(500)
-        self.graph_placeholder.setStyleSheet("QLabel { background-color: #e0e0e0; border: 2px dashed #999; }")
-        layout.addWidget(self.graph_placeholder)
-
-        self.graph_info = QTextEdit()
-        self.graph_info.setReadOnly(True)
-        self.graph_info.setMaximumHeight(100)
-        self.graph_info.setPlaceholderText("Здесь будет отображено графическое решение...")
-        layout.addWidget(self.graph_info)
-
-        layout.addStretch()
-
-    # === ЛОГИКА ПЕРВОЙ ВКЛАДКИ ===
-    def on_dimension_changed(self):
-        """Пересоздание таблицы и обновление текста задачи при изменении размерности"""
+    # + обновление данных при изменении размерности
+    def on_razmernost_changed(self):
         self.n_vars = self.n_spin.value()
         self.m_constrs = self.m_spin.value()
 
@@ -295,28 +263,30 @@ class LinearProblemInput(QMainWindow):
         self._update_matrix_table()
         self.update_problem_text()
 
+    # + Плашки с C коэффициентами
     def _update_c_inputs(self):
-        """Обновление полей ввода коэффициентов целевой функции"""
+        # очищаем сначала
         while self.c_layout.count():
             item = self.c_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            item.widget().deleteLater()
         self.c_inputs = []
 
         for j in range(self.n_vars):
             label = QLabel(f"c{j + 1}:")
             edit = QLineEdit()
-            edit.setPlaceholderText("0")
+            edit.setPlaceholderText("0")  # серым текстом
             edit.setValidator(QRegularExpressionValidator(
                 QRegularExpression(r"^-?\d*\.?\d*(/\d+)?$")))
 
-            # 🔥 Подключаем обновление текста при вводе коэффициентов
+            # обновление постановки задачи при вводе коэффициентов
             edit.textChanged.connect(self.update_problem_text)
 
+            # а теперь добавляем
             self.c_layout.addWidget(label)
             self.c_layout.addWidget(edit)
             self.c_inputs.append(edit)
 
+    # обновление таблицы матрицы ограничений
     def _update_matrix_table(self):
         """Обновление таблицы матрицы ограничений"""
         self.table_widget.setRowCount(self.m_constrs)
@@ -328,7 +298,7 @@ class LinearProblemInput(QMainWindow):
         v_labels = [f"огр. {i + 1}" for i in range(self.m_constrs)]
         self.table_widget.setVerticalHeaderLabels(v_labels)
 
-        # 🔥 Отключаем сигнал на время создания ячеек, чтобы не было лишних вызовов
+        # отключаем сигнал на время создания ячеек, чтобы не было лишних вызовов
         self.table_widget.blockSignals(True)
 
         for i in range(self.m_constrs):
@@ -337,14 +307,14 @@ class LinearProblemInput(QMainWindow):
                 item.setFlags(item.flags() | Qt.ItemIsEditable)
                 self.table_widget.setItem(i, j, item)
 
-        # 🔥 Включаем сигнал обратно
+        # включаем сигнал обратно
         self.table_widget.blockSignals(False)
 
         # Обновляем текст один раз после создания таблицы
         self.update_problem_text()
 
+    # Текст постановки задачи - справа
     def update_problem_text(self):
-        """Генерация текста постановки задачи в математическом виде"""
         # Собираем коэффициенты целевой функции
         c_values = []
         for edit in self.c_inputs:
@@ -429,11 +399,7 @@ class LinearProblemInput(QMainWindow):
 
     # Кнопка решить задачу
     def validate_and_save(self):
-        """Валидация и сохранение данных"""
         try:
-            if self.n_vars > 16 or self.m_constrs > 16:
-                raise ValueError("Размерность не должна превышать 16×16!")
-
             self.c_coeffs = []
             for edit in self.c_inputs:
                 self.c_coeffs.append(self.parse_fraction(edit.text()))
@@ -457,19 +423,20 @@ class LinearProblemInput(QMainWindow):
             self.update_newf_res()
             self.update_x0isc_table()
 
-            self.btn_step_forward.setEnabled(True)
             self.btn_step_back.setEnabled(True)
             self.btn_auto_solve.setEnabled(True)
-            self.btn_select_pivot.setEnabled(True)
+            self.btn_select_opor.setEnabled(True)
 
-            QMessageBox.information(self, "Успех",
-                                    f"Данные приняты!\nПеременных: {self.n_vars}\nОграничений: {self.m_constrs}")
+            QMessageBox.information(self, "Успех", "Данные приняты! Решаем задачу во вкладке метода")
 
+        # краказябра в ячейке вместо числа
         except ValueError as e:
             QMessageBox.critical(self, "Ошибка ввода", str(e))
+        # что-то другое
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Неизвестная ошибка: {e}")
 
+    # Кнопка Сохранить в файл
     def save_to_file(self):
         """Сохранение задачи в файл"""
         try:
@@ -495,6 +462,7 @@ class LinearProblemInput(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка сохранения", str(e))
 
+    # Кнопка Загрузить из файла
     def load_from_file(self):
         """Загрузка задачи из файла"""
         try:
@@ -508,7 +476,7 @@ class LinearProblemInput(QMainWindow):
 
                 self.n_spin.setValue(data['n'])
                 self.m_spin.setValue(data['m'])
-                self.on_dimension_changed()
+                self.on_razmernost_changed()
 
                 for i, val in enumerate(data['c']):
                     if i < len(self.c_inputs):
@@ -532,8 +500,8 @@ class LinearProblemInput(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка загрузки", str(e))
 
+    # Кнопка Очистить
     def clear_all(self):
-        """Очистка всех полей"""
         reply = QMessageBox.question(self, "Подтверждение",
                                      "Очистить все данные?", QMessageBox.Yes | QMessageBox.No)
 
@@ -555,152 +523,102 @@ class LinearProblemInput(QMainWindow):
             self.table_widget.blockSignals(False)
             self.update_problem_text()
 
-            self.btn_step_forward.setEnabled(False)
             self.btn_step_back.setEnabled(False)
             self.btn_auto_solve.setEnabled(False)
-            self.btn_select_pivot.setEnabled(False)
+            self.btn_select_opor.setEnabled(False)
 
-    # Вторая вкладка
+    """ Вторая вкладка """
+
+    # + F = x5 + x6 -> min
     def update_newf(self):
-        # F = x5 + x6 -> min
-        opt_type = "min"
+        opt_type = "min"  # всегда min
         artificial_vars = []
         for j in range(self.m_constrs):
             var_index = self.n_vars + j + 1
             artificial_vars.append(f"x{var_index}")
         vars_string = " + ".join(artificial_vars)
-        if not vars_string:
-            vars_string = "0"
         formula = f"F = {vars_string} -> {opt_type}"
         self.newF.setText(formula)
 
+    # + x* = (0,0,0,0,4,1)
     def update_newf_res(self):
-        # x* = (0,0,0,0,4,1)
+        # массив с ноликами
         solution = ["0"] * self.n_vars
+        # значения из вектора b
         for i in range(len(self.vector_b)):
             solution.append(str(self.vector_b[i]))
-        vars_string2 = ", ".join(solution)
-        formula2 = f"x*0 = ({vars_string2})"
-        self.newF_res.setText(formula2)
+        vars_string = ", ".join(solution)
+        formula = f"x*0 = ({vars_string})"
+        self.newF_res.setText(formula)
 
+    # + Первая X*0 таблица, 0 итерация
     def update_x0isc_table(self):
 
-        # self.x0isc_table = QTableWidget()
-        # newf_layout.addWidget(self.x0isc_table)
+        # очищаем всё насозданное
+        while self.iterations_layout.count():
+            item = self.iterations_layout.takeAt(0)  # первый элемент из layout
+            if item.widget():
+                item.widget().deleteLater()
+        self.iteration_tables.clear()
 
-        """Обновление таблицы x*0"""
-        self.x0isc_table.setRowCount(self.m_constrs + 1)
-        self.x0isc_table.setColumnCount(self.n_vars + 1)
+        # Создаём табличку
+        new_table = QTableWidget()
+        new_table.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+        new_table.setSelectionBehavior(QTableWidget.SelectItems)
+        new_table.itemClicked.connect(self.on_table_cell_clicked)  # для выбора опорного элемента
+        new_table.setRowCount(self.m_constrs + 1)
+        new_table.setColumnCount(self.n_vars + 1)
 
         h_labels = [f"x{j + 1}" for j in range(self.n_vars)] + ["b"]
-        self.x0isc_table.setHorizontalHeaderLabels(h_labels)
+        new_table.setHorizontalHeaderLabels(h_labels)
 
-        v_labels = [f"x{self.n_vars + i + 1}" for i in range(self.m_constrs)]
-        v_labels.append("f")
-        self.x0isc_table.setVerticalHeaderLabels(v_labels)
+        v_labels = [f"x{self.n_vars + i + 1}" for i in range(self.m_constrs)] + ["F"]
+        new_table.setVerticalHeaderLabels(v_labels)
 
-        # Заполняем матрицу А
         for i in range(self.m_constrs):
             for j in range(self.n_vars):
-                value = self.matrix_A[i][j]
-                item = QTableWidgetItem(str(value))
+                val = str(self.matrix_A[i][j])
+                item = QTableWidgetItem(val)
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                self.x0isc_table.setItem(i, j, item)
+                new_table.setItem(i, j, item)
 
-            b_value = self.vector_b[i]
-            item_b = QTableWidgetItem(str(b_value))
+            # вектор b
+            b_val = str(self.vector_b[i])
+            item_b = QTableWidgetItem(b_val)
             item_b.setFlags(item_b.flags() & ~Qt.ItemIsEditable)
-            self.x0isc_table.setItem(i, self.n_vars, item_b)
+            new_table.setItem(i, self.n_vars, item_b)
 
-            # item = self.x0isc_table.item(0, 1)
-            # print(item.text())
+        # сумма по столбцам
+        for c in range(new_table.columnCount()):
+            col_sum = 0.0
+            for r in range(self.m_constrs):
+                item = new_table.item(r, c)
+                col_sum += float(item.text())
 
-        '''
-        for r in range (self.x0isc_table.rowCount()):
-            for c in range (self.x0isc_table.columnCount()):
-                item = self.x0isc_table.item(r, c)
-                if item is not None:
-                    #print(item.text())
-                else:
-                    # print("None")
-                    # item.setText("")
-        '''
+            f_val = -col_sum  # значение с минусом
+            f_item = QTableWidgetItem(str(f_val))
+            f_item.setFlags(f_item.flags() & ~Qt.ItemIsEditable)
+            new_table.setItem(self.m_constrs, c, f_item)
 
-        # Высчитываем f как сумму столбца со знаком минус
-        for c in range(self.x0isc_table.columnCount()):
-            sum_of_cols = 0
-            for r in range(self.x0isc_table.rowCount()):
-                item = self.x0isc_table.item(r, c)
-                if item:
-                    text = item.text()
-                    if text:  # Проверка на пустую строку
-                        sum_of_cols += float(text)
-            f_row_index = self.m_constrs
-            f_value = -sum_of_cols
-            f_item = QTableWidgetItem(str(f_value))
-            f_item.setFlags(f_item.flags() & ~Qt.ItemIsEditable)  # Делаем не редактируемым
-            self.x0isc_table.setItem(f_row_index, c, f_item)
+        self.iterations_layout.addWidget(QLabel(f"<b>Итерация *0</b>"))
+        self.iterations_layout.addWidget(new_table)
+        self.iteration_tables.append(new_table)  # сохраняем таблицу в список
 
-            # ============================================================
+        self.selected_table_widget = None
+        self.selected_row = -1
+        self.selected_col = -1
 
-    # Писала не сама
+    # + выбор опорной ячейки в таблице
     def on_table_cell_clicked(self, item):
-        """Обработка клика по ячейке таблицы"""
         row = item.row()
         col = item.column()
-
-        # Сохраняем координаты
         self.selected_row = row
         self.selected_col = col
+        self.selected_table_widget = item.tableWidget()  # Запоминаем таблицу
 
-        # 🔥 Визуальное выделение (опционально)
-        # Сбрасываем стиль у всех ячеек
-        for r in range(self.x0isc_table.rowCount()):
-            for c in range(self.x0isc_table.columnCount()):
-                cell_item = self.x0isc_table.item(r, c)
-                if cell_item:
-                    cell_item.setBackground(Qt.white)
+        # print(f"Выбран элемент: строка {row}, столбец {col} в таблице {id(self.selected_table_widget)}")
 
-        # Выделяем выбранную ячейку
-        item.setBackground(Qt.yellow)
-
-        # Информационное сообщение
-        print(f"Выбрана ячейка: строка {row}, столбец {col}")
-
-    # === ЗАГЛУШКИ ДЛЯ ВТОРОЙ И ТРЕТЬЕЙ ВКЛАДОК ===
-    def on_step_forward(self):
-        self.step_info.append("➡ Переход к следующей итерации...")
-
-    def on_step_backOld(self):
-        self.step_info.append("⬅ Возврат к предыдущей итерации...")
-
-    def on_step_back(self):
-        """Возврат к предыдущей итерации (требование 6)"""
-
-        if len(self.solution_history) <= 1:
-            QMessageBox.information(self, "Инфо", "Нечего возвращать!")
-            return
-
-        # Удаляем текущее состояние
-        self.solution_history.pop()
-
-        # Восстанавливаем предыдущее
-        prev_state = self.solution_history[-1]
-
-        self.x0isc_table.setRowCount(prev_state['row_count'])
-        self.x0isc_table.setColumnCount(prev_state['col_count'])
-
-        for r in range(prev_state['row_count']):
-            for c in range(prev_state['col_count']):
-                item = self.x0isc_table.item(r, c)
-                if not item:
-                    item = QTableWidgetItem()
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                    self.x0isc_table.setItem(r, c, item)
-                item.setText(prev_state['data'][r][c])
-
-        QMessageBox.information(self, "Успех", "Возврат выполнен!")
-
+    # не готово
     def on_auto_solve(self):
         self.step_info.append("🚀 Запуск автоматического решения...")
 
@@ -752,143 +670,317 @@ class LinearProblemInput(QMainWindow):
 
         '''
 
-    # Писала не сама
-    def on_select_pivot(self):
-        """Обработка кнопки выбора опорного элемента"""
+        # не мой код
+        def on_step_back(self):
+            """Возврат к предыдущей итерации (удаляет последнюю таблицу снизу)"""
+            if len(self.iteration_tables) <= 1:
+                QMessageBox.information(self, "Инфо", "Нечего возвращать! Это начальная таблица.")
+                return
 
-        # Проверка: выбрана ли ячейка
-        if self.selected_row == -1 or self.selected_col == -1:
-            QMessageBox.warning(self, "Внимание",
-                                "Сначала выберите ячейку в таблице!")
+            # Удаляем последнюю таблицу и её заголовок из layout
+            # Layout хранит элементы в порядке: Label, Table, Label, Table...
+            # Берём последние 2 элемента (Table, затем Label)
+
+            # 1. Удаляем таблицу
+            last_item = self.iterations_layout.takeAt(self.iterations_layout.count() - 1)
+            if last_item and last_item.widget():
+                last_item.widget().deleteLater()
+
+            # 2. Удаляем заголовок
+            label_item = self.iterations_layout.takeAt(self.iterations_layout.count() - 1)
+            if label_item and label_item.widget():
+                label_item.widget().deleteLater()
+
+            self.iteration_tables.pop()
+
+            # Сброс выбора
+            self.selected_table_widget = None
+            self.selected_row = -1
+            self.selected_col = -1
+
+            QMessageBox.information(self, "Успех", "Возврат выполнен!")
+
+    # + Кнопка Шаг назад
+    def on_step_back(self):
+        if len(self.iteration_tables) <= 1:
+            QMessageBox.information(self, "Инфо", "Нечего возвращать! Это начальная таблица.")
             return
 
-        row = self.selected_row
-        col = self.selected_col
+        # удаляем таблицу
+        last_item = self.iterations_layout.takeAt(self.iterations_layout.count() - 1)
+        if last_item and last_item.widget():
+            last_item.widget().deleteLater()
 
-        # 🔥 ВАЛИДАЦИЯ
+        # удаляем заголовок
+        label_item = self.iterations_layout.takeAt(self.iterations_layout.count() - 1)
+        if label_item and label_item.widget():
+            label_item.widget().deleteLater()
 
-        # 1. Строка должна быть в пределах ограничений (не строка F)
-        if row >= self.m_constrs:
-            QMessageBox.warning(self, "Ошибка",
-                                "Опорный элемент должен быть в строке ограничений,\n"
-                                f"а не в строке F (строка {self.m_constrs})!")
-            return
+        # удаляем из массива
+        self.iteration_tables.pop()
 
-        # 2. Получаем значение элемента
-        pivot_item = self.x0isc_table.item(row, col)
-        if not pivot_item:
-            QMessageBox.warning(self, "Ошибка", "Ячейка пуста!")
-            return
-
-        try:
-            pivot_value = float(pivot_item.text())
-        except ValueError:
-            QMessageBox.warning(self, "Ошибка", "Неверное значение в ячейке!")
-            return
-
-        # 3. Элемент должен быть положительным
-        if pivot_value <= 0:
-            QMessageBox.warning(self, "Ошибка",
-                                "Опорный элемент должен быть > 0!")
-            return
-
-        # 4. Проверяем коэффициент в строке F (должен быть отрицательным для минимизации)
-        f_row = self.m_constrs
-        f_item = self.x0isc_table.item(f_row, col)
-        if f_item:
-            try:
-                f_coeff = float(f_item.text())
-                if f_coeff >= 0:
-                    QMessageBox.warning(self, "Ошибка",
-                                        "В столбце ведущей переменной коэффициент\n"
-                                        "в строке F должен быть отрицательным!")
-                    return
-            except ValueError:
-                pass
-
-        # 🔥 Всё верно - сохраняем текущее состояние для возврата (требование 6)
-        self.save_table_state()
-
-        # 🔥 Выполняем симплекс-преобразование
-        self.perform_pivot(row, col)
-
-        QMessageBox.information(self, "Успех",
-                                f"Опорный элемент принят!\nСтрока {row}, Столбец {col}")
-
-    # Доп функции, не мои
-    def save_table_state(self):
-        """Сохранение текущего состояния таблицы для возврата назад"""
-        state = {
-            'row_count': self.x0isc_table.rowCount(),
-            'col_count': self.x0isc_table.columnCount(),
-            'data': []
-        }
-
-        for r in range(self.x0isc_table.rowCount()):
-            row_data = []
-            for c in range(self.x0isc_table.columnCount()):
-                item = self.x0isc_table.item(r, c)
-                row_data.append(item.text() if item else "")
-            state['data'].append(row_data)
-
-        self.solution_history.append(state)
-
-        # Ограничиваем историю (например, 100 шагов)
-        if len(self.solution_history) > 100:
-            self.solution_history.pop(0)
-
-    def perform_pivot(self, pivot_row, pivot_col):
-        """Выполнение симплекс-преобразования"""
-
-        # Получаем опорный элемент
-        pivot_item = self.x0isc_table.item(pivot_row, pivot_col)
-        pivot_value = float(pivot_item.text())
-
-        num_rows = self.x0isc_table.rowCount()
-        num_cols = self.x0isc_table.columnCount()
-
-        # 1. Делим ведущую строку на опорный элемент
-        for c in range(num_cols):
-            item = self.x0isc_table.item(pivot_row, c)
-            if item:
-                value = float(item.text())
-                item.setText(str(value / pivot_value))
-
-        # 2. Обнуляем столбец в остальных строках
-        for r in range(num_rows):
-            if r != pivot_row:
-                multiplier_item = self.x0isc_table.item(r, pivot_col)
-                if multiplier_item:
-                    multiplier = float(multiplier_item.text())
-
-                    for c in range(num_cols):
-                        row_item = self.x0isc_table.item(r, c)
-                        pivot_row_item = self.x0isc_table.item(pivot_row, c)
-
-                        if row_item and pivot_row_item:
-                            row_value = float(row_item.text())
-                            pivot_value = float(pivot_row_item.text())
-                            new_value = row_value - multiplier * pivot_value
-                            row_item.setText(str(new_value))
-
-        # Обновляем заголовки строк (базисные переменные меняются)
-        self.update_row_labels_after_pivot(pivot_row, pivot_col)
-
-        # Сбрасываем выбор
+        # сброс выбора
+        self.selected_table_widget = None
         self.selected_row = -1
         self.selected_col = -1
 
+        QMessageBox.information(self, "Готово", "Возврат выполнен!")
+
+    # + Кнопка Выбрать опорный элемент - проверки
+    def on_select_opor(self):
+        if self.selected_row == -1 or self.selected_col == -1:
+            QMessageBox.warning(self, "Внимание", "Сначала выберите ячейку в таблице!")
+            return
+
+        if self.selected_table_widget != self.iteration_tables[-1]:
+            QMessageBox.warning(self, "Внимание", "Выберите ячейку в последней (текущей) таблице!")
+            return
+
+        row, col = self.selected_row, self.selected_col
+        if row >= self.m_constrs:
+            QMessageBox.warning(self, "Внимание", "Опорный элемент должен быть в строке ограничений!")
+            return
+
+        current_table = self.iteration_tables[-1]
+        opor_itm = current_table.item(row, col)
+        if not opor_itm or not opor_itm.text():
+            QMessageBox.warning(self, "Внимание", "Ячейка пуста!")
+            return
+
+        try:
+            opor_val = self.parse_fraction(opor_itm.text())
+        except (ValueError, ZeroDivisionError):
+            QMessageBox.warning(self, "Внимание", "Неверное числовое значение!")
+            return
+
+        if opor_val <= 0:
+            QMessageBox.warning(self, "Внимание", "Опорный элемент должен быть > 0!")
+            return
+
+        f_itm = current_table.item(self.m_constrs, col)  # self.selected_col
+        if f_itm and f_itm.text():  # защита от None
+            try:
+                if self.parse_fraction(f_itm.text()) >= 0:
+                    QMessageBox.warning(self, "Внимание", "Коэффициент в строке F должен быть отрицательным!")
+                    return
+            except (ValueError, ZeroDivisionError):
+                pass
+
+        try:
+            opor_itm.setBackground(QColor("pink"))
+            current_table.clearSelection()
+            self.perform_opor()
+            QMessageBox.information(self, "Успех", f"Итерация выполнена!")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Сбой преобразования:\n{str(e)}")
+
+    """ Доп.функции """
+
+    # Создание новой таблицы внизу
+    def perform_oporGPT(self, pivot_row, pivot_col):
+        current_table = self.iteration_tables[-1]
+        rows = current_table.rowCount()
+        cols = current_table.columnCount()
+
+        table_data = []
+        for r in range(rows):
+            row_vals = []
+            for c in range(cols):
+                itm = current_table.item(r, c)
+                try:
+                    val = self.parse_fraction(itm.text()) if itm and itm.text() else Fraction(0)
+                except (ValueError, ZeroDivisionError):
+                    val = Fraction(0)
+                row_vals.append(val)
+            table_data.append(row_vals)
+
+        pivot_val = table_data[pivot_row][pivot_col]
+        if pivot_val == 0: return
+
+        for c in range(cols):
+            table_data[pivot_row][c] /= pivot_val
+        for r in range(rows):
+            if r == pivot_row: continue
+            multiplier = table_data[r][pivot_col]
+            for c in range(cols):
+                table_data[r][c] -= multiplier * table_data[pivot_row][c]
+
+        new_table = QTableWidget()
+        new_table.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+        new_table.setSelectionBehavior(QTableWidget.SelectItems)
+        new_table.itemClicked.connect(self.on_table_cell_clicked)
+        new_table.setRowCount(rows)
+        new_table.setColumnCount(cols)
+
+        h_labels = [current_table.horizontalHeaderItem(c).text() for c in range(cols)]
+        new_table.setHorizontalHeaderLabels(h_labels)
+
+        v_labels = [current_table.verticalHeaderItem(r).text() for r in range(rows)]
+        v_labels[pivot_row] = h_labels[pivot_col]
+        new_table.setVerticalHeaderLabels(v_labels)
+
+        for r in range(rows):
+            for c in range(cols):
+                # Округляем до 6 знаков только для отображения, храним как Fraction
+                val = table_data[r][c]
+                # Форматируем: если дробь целая, выводим int, иначе дробь
+                text = str(val) if val.denominator != 1 else str(val.numerator)
+                item = QTableWidgetItem(text)
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                new_table.setItem(r, c, item)
+
+        iter_num = len(self.iteration_tables)
+        self.iterations_layout.addWidget(QLabel(f"<b>Итерация *{iter_num}</b>"))
+        self.iterations_layout.addWidget(new_table)
+        self.iteration_tables.append(new_table)
+
+        self.selected_table_widget = None
+        self.selected_row = -1
+        self.selected_col = -1
+
+    def perform_opor(self):
+        # копируем данные
+        current_table = self.iteration_tables[-1]
+        rows = current_table.rowCount()
+        cols = current_table.columnCount()
+        table_data = []
+        for r in range(rows):
+            row_vals = []
+            for c in range(cols):
+                item = current_table.item(r, c)
+                try:
+                    val = self.parse_fraction(item.text()) if item and item.text() else Fraction(0)
+                except (ValueError, ZeroDivisionError):
+                    val = Fraction(0)
+                row_vals.append(val)
+            table_data.append(row_vals)
+
+        # 1. Меняем местами переменные - строки/столбцы
+        old_h_labels = [current_table.horizontalHeaderItem(c).text() for c in range(cols)]
+        # print(old_h_labels)
+        old_v_labels = [current_table.verticalHeaderItem(r).text() for r in range(rows)]
+        # print(old_v_labels)
+
+        new_h_labels = []
+        # print("Опорный:", self.selected_row, self.selected_col)
+        for i in range (len(old_h_labels)):
+            if i != self.selected_col:
+                new_h_labels.append(old_h_labels[i])
+            else:
+                new_h_labels.append(old_v_labels[self.selected_row])
+        # print(new_h_labels)
+
+        new_v_labels = []
+        for i in range(len(old_v_labels)):
+            if i != self.selected_row:
+                new_v_labels.append(old_v_labels[i])
+            else:
+                new_v_labels.append(old_h_labels[self.selected_col])
+        # print(new_v_labels)
+
+
+        new_data = []
+        r_opor = self.selected_row
+        c_opor = self.selected_col
+        opor_el = table_data[r_opor][c_opor]
+
+        # Создаем пустую матрицу того же размера
+        new_data = []
+        for r in range(rows):
+            row = []
+            for c in range(cols):
+                row.append(Fraction(0))
+            new_data.append(row)
+
+        # 2. Новый "опорный"
+        new_opor_el = Fraction(1) / opor_el
+        new_data[r_opor][c_opor] = new_opor_el
+
+        print("Пустая с новым опорным")
+        for r in range(len(new_data)):
+            print(new_data[r])
+        print()
+
+        # 3. Пересчитываем строку c опорным элементом
+        for j in range(cols):
+            if j != c_opor:
+                new_data[r_opor][j] = table_data[r_opor][j] / opor_el
+
+        print("Пересчёт строки")
+        for r in range(len(new_data)):
+            print(new_data[r])
+        print()
+
+        # 4. Пересчитываем столбец
+        for i in range(rows):
+            if i != r_opor:
+                new_data[i][c_opor] = -(table_data[i][c_opor] / opor_el)
+
+        print("Пересчёт столбца")
+        for r in range(len(new_data)):
+            print(new_data[r])
+        print()
+
+        #5. Пересчитываем всё остальное
+        for i in range(rows):
+            if i == r_opor:
+                continue # уже посчитали
+
+            a_is = table_data[i][c_opor] #row_i(1)  s = c_opor
+
+            for j in range(cols):
+                if j == c_opor:
+                    # В ведущем столбце (кроме опорного) всегда 0
+                    new_data[i][j] = Fraction(0)
+                else:
+                    old_val = table_data[i][j]
+                    new_pivot_row_val = new_data[r_opor][j]
+
+                    new_data[i][j] = old_val - a_is * new_pivot_row_val
+
+    # пересчёт F строки
+    def recalculate_f_row(self):
+        f_row = self.m_constrs
+        cols = self.x0isc_table.columnCount()
+
+        for c in range(cols):
+            col_sum = 0.0
+            for r in range(self.m_constrs):
+                itm = self.x0isc_table.item(r, c)
+                if itm and itm.text():
+                    try:
+                        col_sum += float(itm.text())
+                    except ValueError:
+                        pass
+            f_val = round(-col_sum, 6)
+
+            itm = self.x0isc_table.item(f_row, c)
+            if not itm:
+                itm = QTableWidgetItem()
+                itm.setFlags(itm.flags() & ~Qt.ItemIsEditable)
+                self.x0isc_table.setItem(f_row, c, itm)
+            itm.setText(str(f_val))
+
+    # обновление заголовков строк после замены базисной переменной
     def update_row_labels_after_pivot(self, pivot_row, pivot_col):
-        """Обновление заголовков строк после замены базисной переменной"""
-        # В симплекс-методе переменная столбца входит в базис
-        # вместо переменной строки
-        v_labels = self.x0isc_table.verticalHeaderLabels()
+        # 1. Собираем текущие вертикальные заголовки вручную
+        v_labels = []
+        for r in range(self.x0isc_table.rowCount()):
+            item = self.x0isc_table.verticalHeaderItem(r)
+            if item:
+                v_labels.append(item.text())
+            else:
+                v_labels.append("")  # Резерв, если заголовок пуст
 
-        # Имя новой базисной переменной (из заголовка столбца)
-        h_labels = self.x0isc_table.horizontalHeaderLabels()
-        new_var_name = h_labels[pivot_col]
+        # 2. Берем имя переменной из горизонтального заголовка выбранного столбца
+        h_item = self.x0isc_table.horizontalHeaderItem(pivot_col)
+        new_var_name = h_item.text() if h_item else ""
 
-        v_labels[pivot_row] = new_var_name
+        # 3. Заменяем заголовок строки, где находится опорный элемент
+        if 0 <= pivot_row < len(v_labels):
+            v_labels[pivot_row] = new_var_name
+
+        # 4. Устанавливаем обновленный список заголовков
         self.x0isc_table.setVerticalHeaderLabels(v_labels)
 
 

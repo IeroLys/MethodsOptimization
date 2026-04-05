@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QRadioButton, QButtonGroup, QMessageBox, QGroupBox,
                              QFileDialog, QScrollArea, QTabWidget, QTextEdit, QSizePolicy)
 from PyQt5.QtCore import Qt, QRegularExpression
-from PyQt5.QtGui import QRegularExpressionValidator
+from PyQt5.QtGui import QRegularExpressionValidator, QBrush, QColor
 
 
 class LinearProblemInput(QMainWindow):
@@ -40,16 +40,15 @@ class LinearProblemInput(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
-        # Создаём вкладки
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
 
-        # Вкладка 1: Условия задачи ===
+        # Вкладка 1: Условия задачи
         self.tab_conditions = QWidget()
         self.tabs.addTab(self.tab_conditions, "Условия задачи")
         self._init_conditions_tab()
 
-        # Вкладка 2: Метод искусственного базиса ===
+        # Вкладка 2: Метод искусственного базиса
         self.tab_artificial = QWidget()
         self.tabs.addTab(self.tab_artificial, "Метод искусственного базиса")
         self._init_artificial_tab()
@@ -197,25 +196,25 @@ class LinearProblemInput(QMainWindow):
         scroll_layout.setAlignment(Qt.AlignTop)
         self.artificial_scroll.setWidget(scroll_content)
 
-        # === КНОПКИ УПРАВЛЕНИЯ ===
+        # Кнопки управления
         control_group = QGroupBox("")
         control_layout = QHBoxLayout()
 
-        self.btn_step_back = QPushButton("Шаг назад <-")
+        self.btn_step_back = QPushButton("Шаг назад")
         self.btn_step_back.clicked.connect(self.on_step_back)
         self.btn_step_back.setEnabled(False)
-
-        self.btn_auto_solve = QPushButton("Автоматическое решение")
-        self.btn_auto_solve.clicked.connect(self.on_auto_solve)
-        self.btn_auto_solve.setEnabled(False)
 
         self.btn_select_opor = QPushButton("Выбрать опорный элемент")
         self.btn_select_opor.clicked.connect(self.on_select_opor)
         self.btn_select_opor.setEnabled(False)
 
+        self.btn_auto_solve = QPushButton("Автоматическое решение")
+        self.btn_auto_solve.clicked.connect(self.on_auto_solve)
+        self.btn_auto_solve.setEnabled(False)
+
         control_layout.addWidget(self.btn_step_back)
-        control_layout.addWidget(self.btn_auto_solve)
         control_layout.addWidget(self.btn_select_opor)
+        control_layout.addWidget(self.btn_auto_solve)
         control_layout.addStretch()
         control_group.setLayout(control_layout)
         scroll_layout.addWidget(control_group)
@@ -232,7 +231,7 @@ class LinearProblemInput(QMainWindow):
         info_group.setLayout(info_layout)
         scroll_layout.addWidget(info_group)
 
-        # === ТАБЛИЦЫ ИТЕРАЦИЙ ===
+        # Таблицы итераций
         tables_group = QGroupBox("Итерации")
         tables_layout = QVBoxLayout()
 
@@ -702,48 +701,40 @@ class LinearProblemInput(QMainWindow):
 
             QMessageBox.information(self, "Успех", "Возврат выполнен!")
 
+    #+ Кнопка Шаг назад
     def on_step_back(self):
-        """Возврат к предыдущей итерации (удаляет последнюю таблицу снизу)"""
         if len(self.iteration_tables) <= 1:
             QMessageBox.information(self, "Инфо", "Нечего возвращать! Это начальная таблица.")
             return
 
-        # Удаляем последнюю таблицу и её заголовок из layout
-        # Layout хранит элементы в порядке: Label, Table, Label, Table...
-        # Берём последние 2 элемента (Table, затем Label)
-
-        # 1. Удаляем таблицу
+        # удаляем таблицу
         last_item = self.iterations_layout.takeAt(self.iterations_layout.count() - 1)
         if last_item and last_item.widget():
             last_item.widget().deleteLater()
 
-        # 2. Удаляем заголовок
+        # удаляем заголовок
         label_item = self.iterations_layout.takeAt(self.iterations_layout.count() - 1)
         if label_item and label_item.widget():
             label_item.widget().deleteLater()
 
+        # удаляем из массива
         self.iteration_tables.pop()
 
-        # Сброс выбора
+        # сброс выбора
         self.selected_table_widget = None
         self.selected_row = -1
         self.selected_col = -1
 
-        QMessageBox.information(self, "Успех", "Возврат выполнен!")
+        QMessageBox.information(self, "Готово", "Возврат выполнен!")
 
-    # Кнопка Выбрать опорный элемент
+    #+ Кнопка Выбрать опорный элемент - проверки
     def on_select_opor(self):
-        if not self.iteration_tables:
-            QMessageBox.warning(self, "Внимание", "Сначала решите задачу!")
-            return
-
-        # Проверяем, что выбрана ячейка в ТЕКУЩЕЙ (последней) таблице
-        if self.selected_table_widget != self.iteration_tables[-1]:
-            QMessageBox.warning(self, "Внимание", "Выберите ячейку в последней (текущей) таблице!")
-            return
-
         if self.selected_row == -1 or self.selected_col == -1:
             QMessageBox.warning(self, "Внимание", "Сначала выберите ячейку в таблице!")
+            return
+
+        if self.selected_table_widget != self.iteration_tables[-1]:
+            QMessageBox.warning(self, "Внимание", "Выберите ячейку в последней (текущей) таблице!")
             return
 
         row, col = self.selected_row, self.selected_col
@@ -752,57 +743,39 @@ class LinearProblemInput(QMainWindow):
             return
 
         current_table = self.iteration_tables[-1]
-        pivot_itm = current_table.item(row, col)
-        if not pivot_itm or not pivot_itm.text():
+        opor_itm = current_table.item(row, col)
+        if not opor_itm or not opor_itm.text():
             QMessageBox.warning(self, "Внимание", "Ячейка пуста!")
             return
 
         try:
-            pivot_val = float(pivot_itm.text())
-        except ValueError:
+            opor_val = self.parse_fraction(opor_itm.text())
+        except (ValueError, ZeroDivisionError):
             QMessageBox.warning(self, "Внимание", "Неверное числовое значение!")
             return
 
-        if pivot_val <= 0:
+        if opor_val <= 0:
             QMessageBox.warning(self, "Внимание", "Опорный элемент должен быть > 0!")
             return
 
-        f_itm = current_table.item(self.m_constrs, col)
-        if f_itm and f_itm.text():
+        f_itm = current_table.item(self.m_constrs, col) # self.selected_col
+        if f_itm and f_itm.text(): # защита от None
             try:
-                if float(f_itm.text()) >= 0:
+                if self.parse_fraction(f_itm.text()) >= 0:
                     QMessageBox.warning(self, "Внимание", "Коэффициент в строке F должен быть отрицательным!")
                     return
-            except ValueError:
+            except (ValueError, ZeroDivisionError):
                 pass
 
         try:
+            opor_itm.setBackground(QColor("pink"))
+            current_table.clearSelection()
             self.perform_opor(row, col)
-            QMessageBox.information(self, "Успех", f"Итерация выполнена!\nОпорный: строка {row}, столбец {col}")
+            QMessageBox.information(self, "Успех", f"Итерация выполнена!")
         except Exception as e:
-            QMessageBox.critical(self, "Критическая ошибка", f"Сбой преобразования:\n{str(e)}")
+            QMessageBox.critical(self, "Ошибка", f"Сбой преобразования:\n{str(e)}")
 
     """ Доп.функции """
-
-    def save_table_state(self):
-        """Сохранение текущего состояния таблицы для возврата назад"""
-        state = {
-            'row_count': self.x0isc_table.rowCount(),
-            'col_count': self.x0isc_table.columnCount(),
-            'data': []
-        }
-
-        for r in range(self.x0isc_table.rowCount()):
-            row_data = []
-            for c in range(self.x0isc_table.columnCount()):
-                item = self.x0isc_table.item(r, c)
-                row_data.append(item.text() if item and item.text() else "0")
-            state['data'].append(row_data)
-
-        self.solution_history.append(state)
-
-        if len(self.solution_history) > 100:
-            self.solution_history.pop(0)
 
     # Создание новой таблицы внизу
     def perform_opor(self, pivot_row, pivot_col):
@@ -815,8 +788,10 @@ class LinearProblemInput(QMainWindow):
             row_vals = []
             for c in range(cols):
                 itm = current_table.item(r, c)
-                try: val = float(itm.text()) if itm and itm.text() else 0.0
-                except ValueError: val = 0.0
+                try:
+                    val = self.parse_fraction(itm.text()) if itm and itm.text() else Fraction(0)
+                except (ValueError, ZeroDivisionError):
+                    val = Fraction(0)
                 row_vals.append(val)
             table_data.append(row_vals)
 
@@ -847,7 +822,11 @@ class LinearProblemInput(QMainWindow):
 
         for r in range(rows):
             for c in range(cols):
-                item = QTableWidgetItem(str(round(table_data[r][c], 6)))
+                # Округляем до 6 знаков только для отображения, храним как Fraction
+                val = table_data[r][c]
+                # Форматируем: если дробь целая, выводим int, иначе дробь
+                text = str(val) if val.denominator != 1 else str(val.numerator)
+                item = QTableWidgetItem(text)
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 new_table.setItem(r, c, item)
 
