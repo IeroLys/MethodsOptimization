@@ -15,7 +15,7 @@ class LinearProblemInput(QMainWindow):
         self.setWindowTitle("ЗЛП - Лабораторная работа")
         self.setMinimumSize(1200, 900)
 
-        # === Хранилище данных ===
+        # Хранилища
         self.n_vars = 0
         self.m_constrs = 0
         self.c_coeffs = []
@@ -26,11 +26,20 @@ class LinearProblemInput(QMainWindow):
         # Пошаговый режим
         self.selected_row = -1
         self.selected_col = -1
-        self.solution_history = []
+
+        self.simplex_selected_row = -1
+        self.simplex_selected_col = -1
 
         # Для хранения всех таблиц итераций и текущей выбранной таблицы
         self.iteration_tables = []
         self.selected_table_widget = None
+        self.simplex_tables = []
+        self.simplex_selected_table = None
+
+        # Для хранения последней таблицы искусственного метода
+        self.last_artificial_table = None  # QTableWidget
+        self.last_artificial_basis = []  # список базисных переменных (например, ['x3','x4'])
+        self.last_artificial_solution = []  # значения базисных переменных (Fraction)
 
         self.init_ui()
 
@@ -212,9 +221,14 @@ class LinearProblemInput(QMainWindow):
         self.btn_auto_solve.clicked.connect(self.on_auto_solve)
         self.btn_auto_solve.setEnabled(False)
 
+        self.btn_to_simplex = QPushButton("Построить симплекс-таблицу")
+        self.btn_to_simplex.clicked.connect(self.build_initial_simplex_table)
+        self.btn_to_simplex.setEnabled(False)
+
         control_layout.addWidget(self.btn_step_back)
         control_layout.addWidget(self.btn_select_opor)
         control_layout.addWidget(self.btn_auto_solve)
+        control_layout.addWidget(self.btn_to_simplex)
         control_layout.addStretch()
         control_group.setLayout(control_layout)
         scroll_layout.addWidget(control_group)
@@ -251,6 +265,70 @@ class LinearProblemInput(QMainWindow):
     # ВКЛАДКА 3: СИМПЛЕКС МЕТОД
     def _init_simplex_method_tab(self):
         layout = QVBoxLayout(self.tab_simplex_method)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.simplex_scroll = QScrollArea()
+        self.simplex_scroll.setWidgetResizable(True)
+        layout.addWidget(self.simplex_scroll)
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setAlignment(Qt.AlignTop)
+        self.simplex_scroll.setWidget(scroll_content)
+
+        # Кнопки управления
+        control_group = QGroupBox()
+        control_layout = QHBoxLayout()
+        self.simplex_btn_back = QPushButton("Шаг назад")
+        self.simplex_btn_back.setEnabled(False)
+        self.simplex_btn_select = QPushButton("Выбрать опорный элемент")
+        self.simplex_btn_select.setEnabled(False)
+        self.simplex_btn_auto = QPushButton("Автоматическое решение")
+        self.simplex_btn_auto.setEnabled(False)
+
+        control_layout.addWidget(self.simplex_btn_back)
+        control_layout.addWidget(self.simplex_btn_select)
+        control_layout.addWidget(self.simplex_btn_auto)
+        control_layout.addStretch()
+        control_group.setLayout(control_layout)
+        scroll_layout.addWidget(control_group)
+
+        # Контейнер для таблиц итераций
+        self.simplex_iterations_container = QWidget()
+        self.simplex_iterations_layout = QVBoxLayout(self.simplex_iterations_container)
+        self.simplex_iterations_layout.setSpacing(15)
+        self.simplex_iterations_layout.setAlignment(Qt.AlignTop)
+        scroll_layout.addWidget(self.simplex_iterations_container)
+
+        # Подключаем кнопки
+        self.simplex_btn_back.clicked.connect(self.simplex_on_step_back)
+        self.simplex_btn_select.clicked.connect(self.simplex_on_select_opor)
+        self.simplex_btn_auto.clicked.connect(self.simplex_auto_solve)
+
+    def display_simplex_table(self, table):
+        """Отображает переданную таблицу на вкладке симплекс-метода как первую итерацию."""
+        # Очищаем старые таблицы
+        while self.simplex_iterations_layout.count():
+            item = self.simplex_iterations_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self.simplex_tables.clear()
+
+        self.simplex_iterations_layout.addWidget(QLabel("<b>Итерация 0 (начальная симплекс-таблица)</b>"))
+        self.simplex_iterations_layout.addWidget(table)
+        self.simplex_tables.append(table)
+
+        # Подключаем обработчик клика по ячейке для выбора опорного элемента
+        table.itemClicked.connect(self.simplex_on_cell_clicked)
+
+        # Активируем кнопки
+        self.simplex_btn_back.setEnabled(True)
+        self.simplex_btn_select.setEnabled(True)
+        self.simplex_btn_auto.setEnabled(True)
+
+        # Сбрасываем выбор
+        self.simplex_selected_row = -1
+        self.simplex_selected_col = -1
+        self.simplex_selected_table = None
 
     """ Первая вкладка """
     #+ обновление данных при изменении размерности
@@ -622,7 +700,7 @@ class LinearProblemInput(QMainWindow):
         col = item.column()
         self.selected_row = row
         self.selected_col = col
-        self.selected_table_widget = item.tableWidget() # Запоминаем таблицу
+        self.selected_table_widget = item.tableWidget()
 
         # print(f"Выбран элемент: строка {row}, столбец {col} в таблице {id(self.selected_table_widget)}")
 
@@ -704,6 +782,7 @@ class LinearProblemInput(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Сбой преобразования:\n{str(e)}")
 
+    # Итерации
     def perform_opor(self):
         # копируем данные
         current_table = self.iteration_tables[-1]
@@ -849,6 +928,481 @@ class LinearProblemInput(QMainWindow):
         self.selected_table_widget = None
         self.selected_row = -1
         self.selected_col = -1
+
+        last_row = new_table.rowCount() - 1
+        all_zero = True
+        for col in range(new_table.columnCount()):
+            item = new_table.item(last_row, col)
+            if item and self.parse_fraction(item.text()) != 0:
+                all_zero = False
+                break
+        if all_zero:
+            self.last_artificial_table = new_table
+            # Извлечём базисные переменные и их значения
+            self._extract_basis_from_table(new_table)
+            # Можно разблокировать кнопку перехода к симплексу
+            self.btn_to_simplex.setEnabled(True)
+            QMessageBox.information(self, "Искусственный метод завершён",
+                                    "Получено допустимое базисное решение.\n"
+                                    "Нажмите 'Построить симплекс-таблицу' для продолжения.")
+
+    """ Третья вкладка """
+
+    # построение x0 таблицы
+    def _extract_basis_from_table(self, table):
+        """Извлекает базисные переменные и их значения из последней симплекс-таблицы."""
+        rows = table.rowCount()
+        cols = table.columnCount()
+        self.last_artificial_basis = []
+        self.last_artificial_solution = []
+        # Базисные переменные – это те, что в заголовках строк (кроме последней)
+        for r in range(rows - 1):  # последняя строка – F
+            var_name = table.verticalHeaderItem(r).text()
+            self.last_artificial_basis.append(var_name)
+            # Значение базисной переменной – в столбце "b"
+            b_item = table.item(r, cols - 1)
+            val = self.parse_fraction(b_item.text()) if b_item else Fraction(0)
+            self.last_artificial_solution.append(val)
+
+    def build_initial_simplex_table(self):
+        """Строит первую симплекс-таблицу для исходной задачи на основе последней таблицы искусственного метода."""
+        if self.last_artificial_table is None:
+            QMessageBox.warning(self, "Нет данных",
+                                "Сначала решите задачу методом искусственного базиса до конца.")
+            return
+
+        # 1. Определяем, какие исходные переменные вошли в базис
+        n = self.n_vars
+        m = self.m_constrs
+
+        # Из последней таблицы берём:
+        # - коэффициенты при исходных переменных x1..xn в каждой строке ограничений
+        # - столбец b
+        # - информацию о базисных переменных
+
+        # Создаём пустую матрицу A_new (m x n) и вектор b_new
+        A_new = [[Fraction(0) for _ in range(n)] for _ in range(m)]
+        b_new = [Fraction(0) for _ in range(m)]
+
+        # Сопоставим номера исходных переменных с индексами столбцов в последней таблице
+        # В последней таблице могут быть столбцы для x1..xn, а также для дополнительных переменных.
+        # Нам нужны только те столбцы, заголовки которых начинаются с "x" и номер <= n.
+        table = self.last_artificial_table
+        cols = table.columnCount()
+        rows = table.rowCount()
+
+        # Словарь: имя переменной -> индекс столбца в последней таблице
+        col_index = {}
+        for c in range(cols):
+            header = table.horizontalHeaderItem(c).text()
+            col_index[header] = c
+
+        # Для каждой строки ограничений (первые m строк) копируем коэффициенты
+        for r in range(m):
+            # Находим, какая базисная переменная соответствует этой строке
+            basis_var = table.verticalHeaderItem(r).text()
+            # Если базисная переменная – одна из исходных (x1..xn), то её значение в столбце b
+            # и коэффициенты при небазисных исходных переменных берём из этой строки.
+            # Но нам нужны коэффициенты при x1..xn, даже если они небазисные.
+            for j in range(1, n + 1):
+                var_name = f"x{j}"
+                if var_name in col_index:
+                    col = col_index[var_name]
+                    item = table.item(r, col)
+                    val = self.parse_fraction(item.text()) if item else Fraction(0)
+                    A_new[r][j - 1] = val
+            # Столбец b
+            b_item = table.item(r, cols - 1)
+            b_new[r] = self.parse_fraction(b_item.text()) if b_item else Fraction(0)
+
+        # 2. Строим целевую строку для исходной задачи
+        # Сначала вычислим значение целевой функции на текущем решении
+        # Решение: x_j = b_new[i] если x_j в базисе строки i, иначе 0.
+        # Но проще: значение F = sum(c_j * x_j), где x_j берутся из решения.
+        # Заполним массив solution размером n
+        solution = [Fraction(0)] * n
+        # Определим, какая базисная переменная находится в каждой строке
+        for r in range(m):
+            basis_name = table.verticalHeaderItem(r).text()
+            if basis_name.startswith('x'):
+                try:
+                    var_num = int(basis_name[1:])
+                    if 1 <= var_num <= n:
+                        solution[var_num - 1] = b_new[r]
+                except:
+                    pass
+
+        # Значение F
+        F_value = Fraction(0)
+        for j in range(n):
+            F_value += self.c_coeffs[j] * solution[j]
+
+        # Теперь вычислим коэффициенты при небазисных переменных в выражении F
+        # Для этого для каждой исходной переменной x_j (j=0..n-1) определим, является ли она базисной.
+        # Если да, то её коэффициент в строке F = 0.
+        # Если нет, то коэффициент = c_j - sum( c_{базисной} * a_{ij} ), где a_{ij} – коэффициент при x_j в i-й строке.
+        # Но проще: мы можем построить строку F, используя текущую таблицу ограничений и формулу:
+        # F = sum(c_j * x_j) = sum(c_j * (выражение через небазисные)).
+        # Для этого пройдём по всем небазисным переменным и вычислим их коэффициенты.
+
+        # Сначала определим, какие переменные базисные
+        is_basic = [False] * n
+        basic_row = [-1] * n  # для каждой переменной – номер строки, где она базисная
+        for r in range(m):
+            basis_name = table.verticalHeaderItem(r).text()
+            if basis_name.startswith('x'):
+                try:
+                    var_num = int(basis_name[1:])
+                    if 1 <= var_num <= n:
+                        is_basic[var_num - 1] = True
+                        basic_row[var_num - 1] = r
+                except:
+                    pass
+
+        # Строка F: длина n+1 (n коэффициентов и b)
+        F_row = [Fraction(0)] * (n + 1)
+        # Коэффициент при x_j в строке F:
+        # Если x_j базисная, то 0. Иначе: c_j - sum( c_{базисная} * a_{ij} ) по i, где a_{ij} – из A_new.
+        # Но c_{базисная} для базисной переменной x_k – это c_k.
+        # Поэтому проще: для каждого j небазисного:
+        # coef = c_j - sum_{i=0}^{m-1} c_{basis_var_i} * A_new[i][j]
+        # где basis_var_i – переменная, базисная в строке i.
+        for j in range(n):
+            if is_basic[j]:
+                F_row[j] = Fraction(0)
+            else:
+                coef = self.c_coeffs[j]
+                for i in range(m):
+                    basis_var_name = table.verticalHeaderItem(i).text()
+                    if basis_var_name.startswith('x'):
+                        try:
+                            bvar_num = int(basis_var_name[1:])
+                            if 1 <= bvar_num <= n:
+                                coef -= self.c_coeffs[bvar_num - 1] * A_new[i][j]
+                        except:
+                            pass
+                F_row[j] = coef
+        # Свободный член (столбец b)
+        # F_value = sum(c_j * x_j) = sum(c_basic * b_new[i]) – уже посчитано.
+        # Но в симплекс-таблице в правом нижнем углу обычно записывают -F_value (для min) или F_value (для max).
+        # Для единообразия с искусственным методом, где в последней строке был -F, поступим так:
+        # если у нас min, то в правом нижнем углу пишем -F_value, а коэффициенты при небазисных – со знаком минус (как в искусственном).
+        # Чтобы не усложнять, оставим F_row[j] как есть, а в правом углу – F_value (со знаком +).
+        # Но для работы кнопки выбора опорного элемента, которая ожидает отрицательные коэффициенты в строке F, нужно их инвертировать для min.
+        # Упростим: будем хранить F_row как коэффициенты при **небазисных** переменных в выражении F = const + sum(...),
+        # а в таблицу поместим их **со знаком минус** (как в искусственном базисе), чтобы выбор опорного столбца работал одинаково.
+        # Тогда правый нижний угол = -const (т.е. -F_value) для min.
+        if self.is_minimization:
+            for j in range(n):
+                F_row[j] = -F_row[j]  # инвертируем, чтобы в таблице были отрицательные коэффициенты для выбора
+            F_right = -F_value
+        else:
+            # Для максимизации можно преобразовать к минимизации, либо оставить логику выбора по положительным коэффициентам.
+            # Для простоты будем считать, что задача на min (преобразовать max в min умножением на -1).
+            # Поэтому требовать от пользователя, чтобы он ввёл задачу на min.
+            F_right = F_value  # не проверено для max
+
+        # 3. Создаём новую таблицу QTableWidget для симплекс-метода
+        simplex_table = QTableWidget()
+        simplex_table.setRowCount(m + 1)
+        simplex_table.setColumnCount(n + 1)
+
+        # Заголовки столбцов: x1, x2, ..., xn, b
+        h_labels = [f"x{j + 1}" for j in range(n)] + ["b"]
+        simplex_table.setHorizontalHeaderLabels(h_labels)
+
+        # Заголовки строк: базисные переменные (из последней таблицы) + "F"
+        v_labels = []
+        for r in range(m):
+            basis_var = table.verticalHeaderItem(r).text()
+            # Если базисная переменная – искусственная (x с номером > n), то заменяем её на соответствующую исходную?
+            # По идее, искусственные должны выйти из базиса. Но на всякий случай проверим.
+            if basis_var.startswith('x'):
+                try:
+                    num = int(basis_var[1:])
+                    if num > n:
+                        # Это искусственная переменная, но она не должна быть в базисе. Если оказалась, то задача несовместна.
+                        QMessageBox.critical(self, "Ошибка", "Искусственная переменная в базисе! Задача несовместна.")
+                        return
+                except:
+                    pass
+            v_labels.append(basis_var)
+        v_labels.append("F")
+        simplex_table.setVerticalHeaderLabels(v_labels)
+
+        # Заполняем коэффициенты ограничений
+        for i in range(m):
+            for j in range(n):
+                item = QTableWidgetItem(str(A_new[i][j]))
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                simplex_table.setItem(i, j, item)
+            # Столбец b
+            b_item = QTableWidgetItem(str(b_new[i]))
+            b_item.setFlags(b_item.flags() & ~Qt.ItemIsEditable)
+            simplex_table.setItem(i, n, b_item)
+
+        # Заполняем строку F
+        for j in range(n):
+            f_item = QTableWidgetItem(str(F_row[j]))
+            f_item.setFlags(f_item.flags() & ~Qt.ItemIsEditable)
+            simplex_table.setItem(m, j, f_item)
+        # Правый нижний угол
+        f_right_item = QTableWidgetItem(str(F_right))
+        f_right_item.setFlags(f_right_item.flags() & ~Qt.ItemIsEditable)
+        simplex_table.setItem(m, n, f_right_item)
+
+        # Отображаем таблицу на вкладке симплекс-метода
+        self.display_simplex_table(simplex_table)
+
+    #+ выбор опорной ячейки в симплекс таблице
+    def simplex_on_cell_clicked(self, item):
+        row = item.row()
+        col = item.column()
+        self.simplex_selected_row = row
+        self.simplex_selected_col = col
+        self.simplex_selected_table = item.tableWidget()
+
+    #+ кнопка Выбрать опорный элемент - обработки
+    def simplex_on_select_opor(self):
+        if self.simplex_selected_row == -1 or self.simplex_selected_col == -1:
+            QMessageBox.warning(self, "Внимание", "Сначала выберите ячейку в таблице!")
+            return
+
+        if self.simplex_selected_table != self.simplex_tables[-1]:
+            QMessageBox.warning(self, "Внимание", "Выберите ячейку в последней (текущей) таблице!")
+            return
+
+        row, col = self.simplex_selected_row, self.simplex_selected_col
+        if row >= self.m_constrs:
+            QMessageBox.warning(self, "Внимание", "Опорный элемент должен быть в строке ограничений!")
+            return
+
+        current_table = self.simplex_tables[-1]
+        opor_itm = current_table.item(row, col)
+        if not opor_itm or not opor_itm.text():
+            QMessageBox.warning(self, "Внимание", "Ячейка пуста!")
+            return
+
+        try:
+            opor_val = self.parse_fraction(opor_itm.text())
+        except:
+            QMessageBox.warning(self, "Внимание", "Неверное числовое значение!")
+            return
+
+        if opor_val <= 0:
+            QMessageBox.warning(self, "Внимание", "Опорный элемент должен быть > 0!")
+            return
+
+        # Для задачи на минимизацию: коэффициент в строке F должен быть отрицательным
+        f_itm = current_table.item(self.m_constrs, col)
+        if f_itm and f_itm.text():
+            try:
+                if self.parse_fraction(f_itm.text()) >= 0:
+                    QMessageBox.warning(self, "Внимание", "Коэффициент в строке F должен быть отрицательным!")
+                    return
+            except (ValueError, ZeroDivisionError):
+                pass
+
+        try:
+            opor_itm.setBackground(QColor("pink"))
+            current_table.clearSelection()
+            self.simplex_perform_opor()
+            QMessageBox.information(self, "Успех", "Итерация выполнена!")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Сбой преобразования:\n{str(e)}")
+
+    #+ кнопка Шаг назад
+    def simplex_on_step_back(self):
+        if len(self.simplex_tables) <= 1:
+            QMessageBox.information(self, "Инфо", "Нечего возвращать! Это начальная таблица.")
+            return
+
+        last_item = self.simplex_iterations_layout.takeAt(self.simplex_iterations_layout.count() - 1)
+        if last_item and last_item.widget():
+            last_item.widget().deleteLater()
+
+        label_item = self.simplex_iterations_layout.takeAt(self.simplex_iterations_layout.count() - 1)
+        if label_item and label_item.widget():
+            label_item.widget().deleteLater()
+
+        self.simplex_tables.pop()
+
+        self.simplex_selected_table = None
+        self.simplex_selected_row = -1
+        self.simplex_selected_col = -1
+
+        QMessageBox.information(self, "Готово", "Возврат выполнен!")
+
+    # итерации
+    def simplex_perform_opor(self):
+        current_table = self.simplex_tables[-1]
+        rows = current_table.rowCount()
+        cols = current_table.columnCount()
+
+        # Считываем данные
+        table_data = []
+        for r in range(rows):
+            row_vals = []
+            for c in range(cols):
+                item = current_table.item(r, c)
+                try:
+                    val = self.parse_fraction(item.text()) if item and item.text() else Fraction(0)
+                except:
+                    val = Fraction(0)
+                row_vals.append(val)
+            table_data.append(row_vals)
+
+        # Меняем заголовки
+        old_h_labels = [current_table.horizontalHeaderItem(c).text() for c in range(cols)]
+        old_v_labels = [current_table.verticalHeaderItem(r).text() for r in range(rows)]
+
+        new_h_labels = []
+        for c in range(cols):
+            if c != self.simplex_selected_col:
+                new_h_labels.append(old_h_labels[c])
+            else:
+                new_h_labels.append(old_v_labels[self.simplex_selected_row])
+
+        new_v_labels = []
+        for r in range(rows):
+            if r != self.simplex_selected_row:
+                new_v_labels.append(old_v_labels[r])
+            else:
+                new_v_labels.append(old_h_labels[self.simplex_selected_col])
+
+        r_opor = self.simplex_selected_row
+        c_opor = self.simplex_selected_col
+        opor_el = table_data[r_opor][c_opor]
+
+        # Новая матрица
+        new_data = [[Fraction(0) for _ in range(cols)] for _ in range(rows)]
+        new_data[r_opor][c_opor] = Fraction(1) / opor_el
+
+        # Строка опорного элемента
+        for c in range(cols):
+            if c != c_opor:
+                new_data[r_opor][c] = table_data[r_opor][c] / opor_el
+
+        # Столбец опорного элемента
+        for r in range(rows):
+            if r != r_opor:
+                new_data[r][c_opor] = -(table_data[r][c_opor] / opor_el)
+
+        # Остальные ячейки
+        for r in range(rows):
+            if r == r_opor:
+                continue
+            a_is = table_data[r][c_opor]
+            for c in range(cols):
+                if c == c_opor:
+                    continue
+                new_data[r][c] = table_data[r][c] - a_is * new_data[r_opor][c]
+
+        # Создаём новую таблицу
+        new_table = QTableWidget()
+        new_table.setRowCount(rows)
+        new_table.setColumnCount(cols)
+        new_table.setHorizontalHeaderLabels(new_h_labels)
+        new_table.setVerticalHeaderLabels(new_v_labels)
+        new_table.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+        new_table.setSelectionBehavior(QTableWidget.SelectItems)
+        new_table.itemClicked.connect(self.simplex_on_cell_clicked)
+
+        for r in range(rows):
+            for c in range(cols):
+                val = new_data[r][c]
+                text = str(val.numerator) if val.denominator == 1 else str(val)
+                item = QTableWidgetItem(text)
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                new_table.setItem(r, c, item)
+
+        # Добавляем в интерфейс
+        iter_num = len(self.simplex_tables)
+        self.simplex_iterations_layout.addWidget(QLabel(f"<b>Итерация {iter_num}</b>"))
+        self.simplex_iterations_layout.addWidget(new_table)
+        self.simplex_tables.append(new_table)
+
+        # Сбрасываем выбор
+        self.simplex_selected_table = None
+        self.simplex_selected_row = -1
+        self.simplex_selected_col = -1
+
+        # Проверка оптимальности (для min: все коэффициенты в строке F >= 0)
+        last_row = new_table.rowCount() - 1
+        all_non_negative = True
+        for col in range(new_table.columnCount() - 1):  # кроме столбца b
+            item = new_table.item(last_row, col)
+            if item and self.parse_fraction(item.text()) < 0:
+                all_non_negative = False
+                break
+        if all_non_negative:
+            self.simplex_btn_select.setEnabled(False)
+            self.simplex_btn_auto.setEnabled(False)
+            QMessageBox.information(self, "Оптимум найден",
+                                    "Симплекс-метод завершён. Достигнуто оптимальное решение.")
+
+    # кнопка авто-решения
+    def simplex_auto_solve(self):
+        """Автоматически решает задачу симплекс-методом."""
+        # Проверяем, что таблица есть
+        if not self.simplex_tables:
+            QMessageBox.warning(self, "Нет данных", "Сначала постройте начальную симплекс-таблицу.")
+            return
+
+        current_table = self.simplex_tables[-1]
+        iteration = 0
+        max_iter = 100  # защита от зацикливания
+
+        while iteration < max_iter:
+            # Ищем отрицательный коэффициент в строке F (для min)
+            last_row = current_table.rowCount() - 1
+            pivot_col = -1
+            for col in range(current_table.columnCount() - 1):  # кроме b
+                item = current_table.item(last_row, col)
+                if item and self.parse_fraction(item.text()) < 0:
+                    pivot_col = col
+                    break
+
+            if pivot_col == -1:
+                QMessageBox.information(self, "Оптимум", "Достигнуто оптимальное решение.")
+                break
+
+            # Ищем опорную строку по минимальному отношению b / a_ij (a_ij > 0)
+            pivot_row = -1
+            min_ratio = None
+            for row in range(self.m_constrs):
+                a_ij_item = current_table.item(row, pivot_col)
+                if not a_ij_item:
+                    continue
+                a_ij = self.parse_fraction(a_ij_item.text())
+                if a_ij > 0:
+                    b_item = current_table.item(row, current_table.columnCount() - 1)
+                    b_val = self.parse_fraction(b_item.text()) if b_item else Fraction(0)
+                    ratio = b_val / a_ij
+                    if min_ratio is None or ratio < min_ratio:
+                        min_ratio = ratio
+                        pivot_row = row
+
+            if pivot_row == -1:
+                QMessageBox.warning(self, "Ошибка", "Целевая функция не ограничена (нет опорной строки).")
+                return
+
+            # Выбираем ячейку и выполняем шаг
+            self.simplex_selected_row = pivot_row
+            self.simplex_selected_col = pivot_col
+            self.simplex_selected_table = current_table
+
+            # Выполняем преобразование
+            try:
+                self.simplex_perform_opor()
+                current_table = self.simplex_tables[-1]
+                iteration += 1
+            except Exception as e:
+                QMessageBox.critical(self, "Ошибка", f"Ошибка на итерации {iteration}: {e}")
+                return
+
+        if iteration >= max_iter:
+            QMessageBox.warning(self, "Предупреждение", "Достигнуто максимальное число итераций.")
 
 def main():
     app = QApplication(sys.argv)
