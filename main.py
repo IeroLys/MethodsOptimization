@@ -550,7 +550,7 @@ class LinearProblemInput(QMainWindow):
         formula = f"x*0 = ({vars_string})"
         self.newF_res.setText(formula)
 
-    #+ Первая X*0 таблица, 0 итерация
+    #Fraction Первая X*0 таблица, 0 итерация
     def update_x0isc_table(self):
 
         # очищаем всё насозданное
@@ -589,19 +589,28 @@ class LinearProblemInput(QMainWindow):
 
         # сумма по столбцам
         for c in range(new_table.columnCount()):
-            col_sum = 0.0
+            col_sum = Fraction(0, 1)
             for r in range(self.m_constrs):
                 item = new_table.item(r, c)
-                col_sum += float(item.text())
+                if item and item.text():
+                    try:
+                        val = self.parse_fraction(item.text())
+                        col_sum += val
+                    except (ValueError, ZeroDivisionError):
+                        pass
 
-            f_val = -col_sum  # значение с минусом
-            f_item = QTableWidgetItem(str(f_val))
+            f_val = -col_sum
+            if f_val.denominator == 1:
+                text = str(f_val.numerator)
+            else:
+                text = str(f_val)
+            f_item = QTableWidgetItem(text)
             f_item.setFlags(f_item.flags() & ~Qt.ItemIsEditable)
             new_table.setItem(self.m_constrs, c, f_item)
 
         self.iterations_layout.addWidget(QLabel(f"<b>Итерация *0</b>"))
         self.iterations_layout.addWidget(new_table)
-        self.iteration_tables.append(new_table) # сохраняем таблицу в список
+        self.iteration_tables.append(new_table)
 
         self.selected_table_widget = None
         self.selected_row = -1
@@ -617,89 +626,9 @@ class LinearProblemInput(QMainWindow):
 
         # print(f"Выбран элемент: строка {row}, столбец {col} в таблице {id(self.selected_table_widget)}")
 
-
-
     # не готово
     def on_auto_solve(self):
         self.step_info.append("🚀 Запуск автоматического решения...")
-
-    def on_select_pivotOld(self):
-        self.step_info.append("🎯 Выберите опорный элемент в таблице...")
-        '''
-        Для автоматического решения
-        def select_pivot_element(self):
-    """Выбор опорного элемента для текущей итерации"""
-    
-    # 1. Найти ведущий столбец (наиболее отрицательный в строке F)
-    f_row = self.m_constrs  # Индекс строки F
-    pivot_col = -1
-    min_value = 0
-    
-    for j in range(self.n_vars + 1):  # +1 для столбца b
-        item = self.x0isc_table.item(f_row, j)
-        if item:
-            value = float(item.text())
-            if value < min_value:
-                min_value = value
-                pivot_col = j
-    
-    if pivot_col == -1:
-        return None  # Решение найдено
-    
-    # 2. Найти ведущую строку (минимальное θ-отношение)
-    pivot_row = -1
-    min_ratio = float('inf')
-    
-    for i in range(self.m_constrs):  # Только строки ограничений
-        item_coeff = self.x0isc_table.item(i, pivot_col)
-        item_b = self.x0isc_table.item(i, self.n_vars)
-        
-        if item_coeff and item_b:
-            coeff = float(item_coeff.text())
-            b_val = float(item_b.text())
-            
-            if coeff > 0:
-                ratio = b_val / coeff
-                if ratio < min_ratio:
-                    min_ratio = ratio
-                    pivot_row = i
-    
-    if pivot_row == -1:
-        return None  # Задача неограничена
-    
-    return (pivot_row, pivot_col)  # Опорный элемент найден
-        
-        '''
-
-        # не мой код
-        def on_step_back(self):
-            """Возврат к предыдущей итерации (удаляет последнюю таблицу снизу)"""
-            if len(self.iteration_tables) <= 1:
-                QMessageBox.information(self, "Инфо", "Нечего возвращать! Это начальная таблица.")
-                return
-
-            # Удаляем последнюю таблицу и её заголовок из layout
-            # Layout хранит элементы в порядке: Label, Table, Label, Table...
-            # Берём последние 2 элемента (Table, затем Label)
-
-            # 1. Удаляем таблицу
-            last_item = self.iterations_layout.takeAt(self.iterations_layout.count() - 1)
-            if last_item and last_item.widget():
-                last_item.widget().deleteLater()
-
-            # 2. Удаляем заголовок
-            label_item = self.iterations_layout.takeAt(self.iterations_layout.count() - 1)
-            if label_item and label_item.widget():
-                label_item.widget().deleteLater()
-
-            self.iteration_tables.pop()
-
-            # Сброс выбора
-            self.selected_table_widget = None
-            self.selected_row = -1
-            self.selected_col = -1
-
-            QMessageBox.information(self, "Успех", "Возврат выполнен!")
 
     #+ Кнопка Шаг назад
     def on_step_back(self):
@@ -770,41 +699,112 @@ class LinearProblemInput(QMainWindow):
         try:
             opor_itm.setBackground(QColor("pink"))
             current_table.clearSelection()
-            self.perform_opor(row, col)
+            self.perform_opor()
             QMessageBox.information(self, "Успех", f"Итерация выполнена!")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Сбой преобразования:\n{str(e)}")
 
-    """ Доп.функции """
-
-    # Создание новой таблицы внизу
-    def perform_opor(self, pivot_row, pivot_col):
+    def perform_opor(self):
+        # копируем данные
         current_table = self.iteration_tables[-1]
         rows = current_table.rowCount()
         cols = current_table.columnCount()
-
         table_data = []
         for r in range(rows):
             row_vals = []
             for c in range(cols):
-                itm = current_table.item(r, c)
+                item = current_table.item(r, c)
                 try:
-                    val = self.parse_fraction(itm.text()) if itm and itm.text() else Fraction(0)
+                    val = self.parse_fraction(item.text()) if item and item.text() else Fraction(0)
                 except (ValueError, ZeroDivisionError):
                     val = Fraction(0)
                 row_vals.append(val)
             table_data.append(row_vals)
 
-        pivot_val = table_data[pivot_row][pivot_col]
-        if pivot_val == 0: return
+        # 1. Меняем местами переменные - строки/столбцы
+        old_h_labels = [current_table.horizontalHeaderItem(c).text() for c in range(cols)]
+        # print(old_h_labels)
+        old_v_labels = [current_table.verticalHeaderItem(r).text() for r in range(rows)]
+        # print(old_v_labels)
 
-        for c in range(cols):
-            table_data[pivot_row][c] /= pivot_val
+        new_h_labels = []
+        # print("Опорный:", self.selected_row, self.selected_col)
+        for r in range (len(old_h_labels)):
+            if r != self.selected_col:
+                new_h_labels.append(old_h_labels[r])
+            else:
+                new_h_labels.append(old_v_labels[self.selected_row])
+        # print(new_h_labels)
+
+        new_v_labels = []
+        for r in range(len(old_v_labels)):
+            if r != self.selected_row:
+                new_v_labels.append(old_v_labels[r])
+            else:
+                new_v_labels.append(old_h_labels[self.selected_col])
+        # print(new_v_labels)
+
+
+        new_data = []
+        r_opor = self.selected_row
+        c_opor = self.selected_col
+        opor_el = table_data[r_opor][c_opor]
+
+        # Создаем пустую матрицу того же размера
+        new_data = []
         for r in range(rows):
-            if r == pivot_row: continue
-            multiplier = table_data[r][pivot_col]
+            row = []
             for c in range(cols):
-                table_data[r][c] -= multiplier * table_data[pivot_row][c]
+                row.append(Fraction(0))
+            new_data.append(row)
+
+        # 2. Новый "опорный"
+        new_opor_el = Fraction(1) / opor_el
+        new_data[r_opor][c_opor] = new_opor_el
+
+        # print("Пустая с новым опорным")
+        # for r in range(len(new_data)):
+        #     print(new_data[r])
+        # print()
+
+        # 3. Пересчитываем строку c опорным элементом
+        for c in range(cols):
+            if c != c_opor:
+                new_data[r_opor][c] = table_data[r_opor][c] / opor_el
+
+        # print("Пересчёт строки")
+        # for r in range(len(new_data)):
+        #     print(new_data[r])
+        # print()
+
+        # 4. Пересчитываем столбец
+        for r in range(rows):
+            if r != r_opor:
+                new_data[r][c_opor] = -(table_data[r][c_opor] / opor_el)
+
+        # print("Пересчёт столбца")
+        # for r in range(len(new_data)):
+        #     print(new_data[r])
+        # print()
+
+        #5. Пересчитываем всё остальное
+        for r in range(rows):
+            if r == r_opor: continue # уже посчитали
+            a_is = table_data[r][c_opor]
+            for c in range(cols):
+                if c == c_opor: continue  # уже посчитали
+                else:
+                    # row_i(1) = row_i(0) - a_is(0) * row_s(1)
+                    old_val = table_data[r][c]
+                    new_opor_row_val = new_data[r_opor][c]
+                    new_data[r][c] = old_val - a_is * new_opor_row_val
+
+        # print("Конечная таблица")
+        # for r in range(len(new_data)):
+        #     print(new_data[r])
+        # print()
+
+        # Рисуем таблицу
 
         new_table = QTableWidget()
         new_table.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
@@ -813,76 +813,42 @@ class LinearProblemInput(QMainWindow):
         new_table.setRowCount(rows)
         new_table.setColumnCount(cols)
 
-        h_labels = [current_table.horizontalHeaderItem(c).text() for c in range(cols)]
-        new_table.setHorizontalHeaderLabels(h_labels)
+        new_table.setHorizontalHeaderLabels(new_h_labels)
+        new_table.setVerticalHeaderLabels(new_v_labels)
 
-        v_labels = [current_table.verticalHeaderItem(r).text() for r in range(rows)]
-        v_labels[pivot_row] = h_labels[pivot_col]
-        new_table.setVerticalHeaderLabels(v_labels)
-
+        # заполняем таблицу данными из new_data
         for r in range(rows):
             for c in range(cols):
-                # Округляем до 6 знаков только для отображения, храним как Fraction
-                val = table_data[r][c]
-                # Форматируем: если дробь целая, выводим int, иначе дробь
-                text = str(val) if val.denominator != 1 else str(val.numerator)
+                val = new_data[r][c]
+                if val.denominator == 1: # чтоб 5/1 дробью не было (знаменатель)
+                    text = str(val.numerator) # числитель
+                else:
+                    text = str(val)
+
                 item = QTableWidgetItem(text)
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 new_table.setItem(r, c, item)
 
-        iter_num = len(self.iteration_tables)
+        for col in range(new_table.columnCount() - 1, -1, -1):
+            header = new_table.horizontalHeaderItem(col)
+            if header and header.text().startswith('x'):
+                try:
+                    var_num = int(header.text()[1:])
+                    if var_num > self.n_vars:
+                        new_table.removeColumn(col)
+                except ValueError:
+                    pass
+
+        # Добавляем таблицу в интерфейс
+        iter_num = len(self.iteration_tables)  # Номер новой итерации
         self.iterations_layout.addWidget(QLabel(f"<b>Итерация *{iter_num}</b>"))
         self.iterations_layout.addWidget(new_table)
         self.iteration_tables.append(new_table)
 
+        # Сбрасываем выбор
         self.selected_table_widget = None
         self.selected_row = -1
         self.selected_col = -1
-
-    # пересчёт F строки
-    def recalculate_f_row(self):
-        f_row = self.m_constrs
-        cols = self.x0isc_table.columnCount()
-
-        for c in range(cols):
-            col_sum = 0.0
-            for r in range(self.m_constrs):
-                itm = self.x0isc_table.item(r, c)
-                if itm and itm.text():
-                    try:
-                        col_sum += float(itm.text())
-                    except ValueError:
-                        pass
-            f_val = round(-col_sum, 6)
-
-            itm = self.x0isc_table.item(f_row, c)
-            if not itm:
-                itm = QTableWidgetItem()
-                itm.setFlags(itm.flags() & ~Qt.ItemIsEditable)
-                self.x0isc_table.setItem(f_row, c, itm)
-            itm.setText(str(f_val))
-
-    # обновление заголовков строк после замены базисной переменной
-    def update_row_labels_after_pivot(self, pivot_row, pivot_col):
-        # 1. Собираем текущие вертикальные заголовки вручную
-        v_labels = []
-        for r in range(self.x0isc_table.rowCount()):
-            item = self.x0isc_table.verticalHeaderItem(r)
-            if item:
-                v_labels.append(item.text())
-            else:
-                v_labels.append("")  # Резерв, если заголовок пуст
-
-        # 2. Берем имя переменной из горизонтального заголовка выбранного столбца
-        h_item = self.x0isc_table.horizontalHeaderItem(pivot_col)
-        new_var_name = h_item.text() if h_item else ""
-
-        # 3. Заменяем заголовок строки, где находится опорный элемент
-        if 0 <= pivot_row < len(v_labels):
-            v_labels[pivot_row] = new_var_name
-
-        # 4. Устанавливаем обновленный список заголовков
-        self.x0isc_table.setVerticalHeaderLabels(v_labels)
 
 def main():
     app = QApplication(sys.argv)
