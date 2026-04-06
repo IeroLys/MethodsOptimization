@@ -1285,8 +1285,6 @@ class LinearProblemInput(QMainWindow):
         print(f"F = {F_const} + {F[0]}*x1 + {F[1]}*x2 + {F[2]}*x3 + {F[3]}*x4")
 
     def x0_table(self):
-        """Строит первую симплекс-таблицу для исходной задачи на основе последней таблицы искусственного метода."""
-
         if self.last_artificial_table is None:
             QMessageBox.warning(self, "Нет данных",
                                 "Сначала решите задачу методом искусственного базиса до конца.")
@@ -1295,160 +1293,100 @@ class LinearProblemInput(QMainWindow):
         n = self.n_vars
         m = self.m_constrs
         table = self.last_artificial_table
-        rows = table.rowCount()
-        cols = table.columnCount()
 
-        # ========== 1. Получаем данные из таблицы ==========
-        # Заголовки
-        h_labels = []
-        for c in range(cols):
-            h_labels.append(table.horizontalHeaderItem(c).text())
+        # 1. Собираем коэффициенты ограничений (A_new) и b_new
+        A_new = [[Fraction(0) for _ in range(n)] for _ in range(m)]
+        b_new = [Fraction(0) for _ in range(m)]
 
-        v_labels = []
-        for r in range(rows):
-            v_labels.append(table.verticalHeaderItem(r).text())
+        col_index = {}
+        for c in range(table.columnCount()):
+            header = table.horizontalHeaderItem(c).text()
+            col_index[header] = c
 
-        # Данные в виде дробей
-        last_data = []
-        for r in range(rows):
-            row_data = []
-            for c in range(cols):
-                item = table.item(r, c)
-                val = self.parse_fraction(item.text()) if item and item.text() else Fraction(0)
-                row_data.append(val)
-            last_data.append(row_data)
-
-        # ========== 2. Определяем базисные и небазисные переменные ==========
-        # Базисные переменные - заголовки строк (кроме последней строки F)
-        basic_vars = []
+        basis_vars = []
         for r in range(m):
-            basic_vars.append(v_labels[r])
+            basis_var = table.verticalHeaderItem(r).text()
+            basis_vars.append(basis_var)
 
-        # Небазисные переменные - заголовки столбцов (кроме b), которых нет среди базисных
-        nonbasic_vars = []
-        for c in range(cols - 1):  # все столбцы кроме b
-            var_name = h_labels[c]
-            if var_name not in basic_vars:
-                nonbasic_vars.append(var_name)
+            for j in range(1, n + 1):
+                var_name = f"x{j}"
+                if var_name in col_index:
+                    col = col_index[var_name]
+                    item = table.item(r, col)
+                    val = self.parse_fraction(item.text()) if item else Fraction(0)
+                    A_new[r][j - 1] = val
 
-        # ========== 3. Собираем b и коэффициенты для базисных переменных ==========
-        b_values = []  # свободные члены
-        basic_coeffs = []  # коэффициенты при небазисных переменных
+            b_item = table.item(r, table.columnCount() - 1)
+            b_new[r] = self.parse_fraction(b_item.text()) if b_item else Fraction(0)
 
-        for i in range(m):
-            # Свободный член b
-            b_values.append(last_data[i][cols - 1])
+        # 2. Вычисляем выражение целевой функции через небазисные переменные
+        is_basic = [False] * n
+        basic_row_for_var = [-1] * n
 
-            # Коэффициенты при небазисных переменных (с МИНУСОМ из-за переноса)
-            coeff_row = []
-            for nb_var in nonbasic_vars:
-                # Находим индекс этого столбца
-                for c in range(cols - 1):
-                    if h_labels[c] == nb_var:
-                        coeff_row.append(-last_data[i][c])
-                        break
-            basic_coeffs.append(coeff_row)
+        for r in range(m):
+            basis_name = basis_vars[r]
+            if basis_name.startswith('x'):
+                try:
+                    var_num = int(basis_name[1:])
+                    if 1 <= var_num <= n:
+                        is_basic[var_num - 1] = True
+                        basic_row_for_var[var_num - 1] = r
+                except:
+                    pass
 
-        # ========== 4. Вычисляем коэффициенты F по формуле ==========
-        # const = sum(c_basic * b)
-        # coeffs[nb] = sum(c_basic * коэффициент_при_nb) + c_nb
+        F_coeff = [Fraction(0) for _ in range(n)]
+        F_const = Fraction(0)
 
-        const = Fraction(0)
-        coeffs = [Fraction(0) for _ in range(n)]
-
-        # Проходим по каждой базисной переменной
-        for i in range(m):
-            basic_var = basic_vars[i]
-            # Получаем номер базисной переменной (x1 -> 0, x2 -> 1, ...)
-            if basic_var.startswith('x'):
-                basic_num = int(basic_var[1:]) - 1
-                c_basic = self.c_coeffs[basic_num]
-
-                # Добавляем вклад от b
-                const += c_basic * b_values[i]
-
-                # Добавляем вклад от небазисных переменных
-                for j, nb_var in enumerate(nonbasic_vars):
-                    nb_num = int(nb_var[1:]) - 1
-                    coeffs[nb_num] += c_basic * basic_coeffs[i][j]
-
-        # Добавляем небазисные переменные (те, что не в базисе)
         for j in range(n):
-            var_name = f"x{j + 1}"
-            if var_name not in basic_vars:
-                coeffs[j] += self.c_coeffs[j]
+            if is_basic[j]:
+                row = basic_row_for_var[j]
+                F_const += self.c_coeffs[j] * b_new[row]
+                for k in range(n):
+                    if not is_basic[k]:
+                        F_coeff[k] -= self.c_coeffs[j] * A_new[row][k]
+            else:
+                F_coeff[j] += self.c_coeffs[j]
 
-        # ========== 5. Преобразуем для симплекс-таблицы ==========
-        # В симплекс-таблице: F + сумма(коэффициенты * переменные) = const
-        # Поэтому меняем знаки
-        F_row = [-coeffs[j] for j in range(n)]
-        F_right = -const
+        # 3. === ИСПРАВЛЕННЫЙ БЛОК СО ЗНАКАМИ ===
+        if self.is_minimization:
+            F_row = [F_coeff[j] for j in range(n)]  # для min — reduced costs как есть
+            F_right = -F_const
+        else:
+            F_row = [-F_coeff[j] for j in range(n)]  # для max — меняем знак
+            F_right = F_const
 
-        # Если задача на max, преобразуем к min
-        if not self.is_minimization:
-            F_row = [-coef for coef in F_row]
-            F_right = -F_right
-
-        # ========== 6. Собираем небазисные переменные (у которых коэффициент не 0) ==========
-        nonbasic_with_coeff = []
-        nonbasic_indices = []
-        for j in range(n):
-            if coeffs[j] != 0:
-                nonbasic_with_coeff.append(f"x{j + 1}")
-                nonbasic_indices.append(j)
-
-        # Если все коэффициенты нулевые - задача решена
-        if len(nonbasic_with_coeff) == 0:
-            QMessageBox.information(self, "Оптимум найден",
-                                    f"Оптимальное решение: F = {const}")
-            return
-
-        # ========== 7. Создаём новую симплекс-таблицу ==========
+        # 4. Создаём симплекс-таблицу
         simplex_table = QTableWidget()
         simplex_table.setRowCount(m + 1)
-        simplex_table.setColumnCount(len(nonbasic_with_coeff) + 1)
+        simplex_table.setColumnCount(n + 1)
 
-        # Заголовки столбцов (только небазисные переменные с ненулевыми коэффициентами)
-        col_labels = nonbasic_with_coeff + ["b"]
-        simplex_table.setHorizontalHeaderLabels(col_labels)
+        h_labels = [f"x{j + 1}" for j in range(n)] + ["b"]
+        simplex_table.setHorizontalHeaderLabels(h_labels)
 
-        # Заголовки строк
-        row_labels = basic_vars + ["F"]
-        simplex_table.setVerticalHeaderLabels(row_labels)
+        v_labels = basis_vars + ["F"]
+        simplex_table.setVerticalHeaderLabels(v_labels)
 
-        # Заполняем строки ограничений
+        # Заполняем ограничения
         for i in range(m):
-            # Коэффициенты при небазисных переменных
-            for col_idx, nb_var in enumerate(nonbasic_with_coeff):
-                # Находим коэффициент в basic_coeffs[i]
-                coeff = Fraction(0)
-                for j, nb in enumerate(nonbasic_vars):
-                    if nb == nb_var:
-                        coeff = basic_coeffs[i][j]
-                        break
-                item = QTableWidgetItem(str(coeff))
+            for j in range(n):
+                item = QTableWidgetItem(str(A_new[i][j]))
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                simplex_table.setItem(i, col_idx, item)
-
-            # Столбец b
-            item = QTableWidgetItem(str(b_values[i]))
-            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-            simplex_table.setItem(i, len(nonbasic_with_coeff), item)
+                simplex_table.setItem(i, j, item)
+            b_item = QTableWidgetItem(str(b_new[i]))
+            b_item.setFlags(b_item.flags() & ~Qt.ItemIsEditable)
+            simplex_table.setItem(i, n, b_item)
 
         # Заполняем строку F
-        for col_idx, nb_var in enumerate(nonbasic_with_coeff):
-            nb_num = int(nb_var[1:]) - 1
-            coeff_in_table = F_row[nb_num]
-            item = QTableWidgetItem(str(coeff_in_table))
-            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-            simplex_table.setItem(m, col_idx, item)
+        for j in range(n):
+            f_item = QTableWidgetItem(str(F_row[j]))
+            f_item.setFlags(f_item.flags() & ~Qt.ItemIsEditable)
+            simplex_table.setItem(m, j, f_item)
 
-        # Правый нижний угол
-        item = QTableWidgetItem(str(F_right))
-        item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-        simplex_table.setItem(m, len(nonbasic_with_coeff), item)
+        f_right_item = QTableWidgetItem(str(F_right))
+        f_right_item.setFlags(f_right_item.flags() & ~Qt.ItemIsEditable)
+        simplex_table.setItem(m, n, f_right_item)
 
-        # ========== 8. Отображаем таблицу ==========
+        # Отображаем
         while self.simplex_iterations_layout.count():
             item = self.simplex_iterations_layout.takeAt(0)
             if item.widget():
@@ -1459,27 +1397,22 @@ class LinearProblemInput(QMainWindow):
         self.simplex_iterations_layout.addWidget(simplex_table)
         self.simplex_tables.append(simplex_table)
 
-        # Подключаем обработчик
         simplex_table.itemClicked.connect(self.simplex_on_cell_clicked)
 
-        # Активируем кнопки
         self.simplex_btn_back.setEnabled(True)
         self.simplex_btn_select.setEnabled(True)
         self.simplex_btn_auto.setEnabled(True)
 
-        # Сбрасываем выбор
         self.simplex_selected_row = -1
         self.simplex_selected_col = -1
         self.simplex_selected_table = None
 
-        # Выводим информацию
-        expr_str = f"F = {const}"
-        for j in range(n):
-            if coeffs[j] != 0:
-                sign = "+" if coeffs[j] > 0 else ""
-                expr_str += f" {sign}{coeffs[j]}*x{j + 1}"
-
-        QMessageBox.information(self, "Симплекс-таблица построена", expr_str)
+        # Информационное сообщение (можно оставить как есть)
+        expr = f"F = {F_const} + " + " + ".join(
+            [f"({F_coeff[j]})*x{j + 1}" for j in range(n) if F_coeff[j] != 0]) or "0"
+        QMessageBox.information(self, "Симплекс-таблица построена",
+                                f"Выражение целевой функции:\n{expr}\n\n"
+                                f"В таблице F-строка настроена для {'минимума' if self.is_minimization else 'максимума'}.")
 
     def build_x0_tableGPT(self):
         """Построение симплекс-таблицы из последней таблицы искусственного метода"""

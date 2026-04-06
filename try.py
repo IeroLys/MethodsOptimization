@@ -1,54 +1,35 @@
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QMainWindow, QLabel, QLineEdit, QVBoxLayout, QAction, \
-    QMenu
-from PyQt5.QtCore import QSize, Qt
+h_labels = ["x3", "x4", "b"]
+v_labels = ["x2", "x1", "F"]
 
-import sys
+last_data = [
+            [2, -1, 1],  # строка x2
+            [-1, 1, 2],  # строка x1
+            [0, 0, 0]
+            ]
+n = 4 # кол-во иксов
+m = 2 # кол-во ограничений
 
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
+cs = [-2, -1, -3, -1]
 
-        self.setWindowTitle("My App")
-        button = QPushButton("Print 5 vars!")
-        button.setCheckable(True)
-        button.clicked.connect(self.the_button_was_clicked)
+F_xs = []
+for i in range(n):
+    F_xs.append(0)
 
-        self.setMinimumSize(QSize(500, 300))
+b_vector = []
+for i in range(m):
+    b_vector.append(last_data[i][-1])
 
-        self.label = QLabel()
+print("b_vector:", b_vector)
+base_vars = v_labels[:-1]
+print("base_vars:", base_vars)
 
-        self.input = QLineEdit()
-        self.input.textChanged.connect(self.label.setText)
+print(str(b_vector[0])[:-1])
 
-        layout = QVBoxLayout()
-        layout.addWidget(self.input)
-        layout.addWidget(self.label)
+coef_x = []
+for i in range(len(v_labels)-1):
+    coef_row = []
+    for j in range(len(h_labels)-1):
+        coef_row.append(last_data[i][j])
+    coef_x.append(coef_row)
 
-        container = QWidget()
-        container.setLayout(layout)
-
-        self.setCentralWidget(container)
-
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.customContextMenuRequested.connect(self.on_context_menu)
-
-    def contextMenuEvent(self, e):
-        context = QMenu(self)
-        context.addAction(QAction("test 1", self))
-        context.addAction(QAction("test 2", self))
-        context.addAction(QAction("test 3", self))
-        context.exec(e.globalPos())
-
-    def the_button_was_clicked(self):
-        for i in range(5):
-            print("x" + str(i))
-        self.button.setText("You already clicked me.")
-
-
-myapp = QApplication(sys.argv)
-
-window = MainWindow()
-window.show()
-
-
-myapp.exec()
+print(coef_x)
