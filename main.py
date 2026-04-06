@@ -938,46 +938,31 @@ class LinearProblemInput(QMainWindow):
 
     # построение x0 таблицы
     def build_x0_table(self):
-        """Строит первую симплекс-таблицу для исходной задачи на основе последней таблицы искусственного метода."""
-
+        """Строит первую симплекс-таблицу для исходной задачи
+        на основе последней таблицы искусственного метода."""
         if self.last_artificial_table is None:
             QMessageBox.warning(self, "Нет данных",
                                 "Сначала решите задачу методом искусственного базиса до конца.")
             return
 
-        # 1. Определяем, какие исходные переменные вошли в базис
         n = self.n_vars
         m = self.m_constrs
+        table = self.last_artificial_table
 
-        # Из последней таблицы берём:
-        # - коэффициенты при исходных переменных x1..xn в каждой строке ограничений
-        # - столбец b
-        # - информацию о базисных переменных
-
-        # Создаём пустую матрицу A_new (m x n) и вектор b_new
+        # 1. Собираем коэффициенты ограничений (A_new) и b_new
         A_new = [[Fraction(0) for _ in range(n)] for _ in range(m)]
         b_new = [Fraction(0) for _ in range(m)]
 
-        # Сопоставим номера исходных переменных с индексами столбцов в последней таблице
-        # В последней таблице могут быть столбцы для x1..xn, а также для дополнительных переменных.
-        # Нам нужны только те столбцы, заголовки которых начинаются с "x" и номер <= n.
-        table = self.last_artificial_table
-        cols = table.columnCount()
-        rows = table.rowCount()
-
-        # Словарь: имя переменной -> индекс столбца в последней таблице
         col_index = {}
-        for c in range(cols):
+        for c in range(table.columnCount()):
             header = table.horizontalHeaderItem(c).text()
             col_index[header] = c
 
-        # Для каждой строки ограничений (первые m строк) копируем коэффициенты
+        basis_vars = []
         for r in range(m):
-            # Находим, какая базисная переменная соответствует этой строке
             basis_var = table.verticalHeaderItem(r).text()
-            # Если базисная переменная – одна из исходных (x1..xn), то её значение в столбце b
-            # и коэффициенты при небазисных исходных переменных берём из этой строки.
-            # Но нам нужны коэффициенты при x1..xn, даже если они небазисные.
+            basis_vars.append(basis_var)
+
             for j in range(1, n + 1):
                 var_name = f"x{j}"
                 if var_name in col_index:
@@ -985,132 +970,63 @@ class LinearProblemInput(QMainWindow):
                     item = table.item(r, col)
                     val = self.parse_fraction(item.text()) if item else Fraction(0)
                     A_new[r][j - 1] = val
-            # Столбец b
-            b_item = table.item(r, cols - 1)
+
+            b_item = table.item(r, table.columnCount() - 1)
             b_new[r] = self.parse_fraction(b_item.text()) if b_item else Fraction(0)
 
-        # 2. Строим целевую строку для исходной задачи
-        # Сначала вычислим значение целевой функции на текущем решении
-        # Решение: x_j = b_new[i] если x_j в базисе строки i, иначе 0.
-        # Но проще: значение F = sum(c_j * x_j), где x_j берутся из решения.
-        # Заполним массив solution размером n
-        solution = [Fraction(0)] * n
-        # Определим, какая базисная переменная находится в каждой строке
-        for r in range(m):
-            basis_name = table.verticalHeaderItem(r).text()
-            if basis_name.startswith('x'):
-                try:
-                    var_num = int(basis_name[1:])
-                    if 1 <= var_num <= n:
-                        solution[var_num - 1] = b_new[r]
-                except:
-                    pass
-
-        # Значение F
-        F_value = Fraction(0)
-        for j in range(n):
-            F_value += self.c_coeffs[j] * solution[j]
-
-        # Теперь вычислим коэффициенты при небазисных переменных в выражении F
-        # Для этого для каждой исходной переменной x_j (j=0..n-1) определим, является ли она базисной.
-        # Если да, то её коэффициент в строке F = 0.
-        # Если нет, то коэффициент = c_j - sum( c_{базисной} * a_{ij} ), где a_{ij} – коэффициент при x_j в i-й строке.
-        # Но проще: мы можем построить строку F, используя текущую таблицу ограничений и формулу:
-        # F = sum(c_j * x_j) = sum(c_j * (выражение через небазисные)).
-        # Для этого пройдём по всем небазисным переменным и вычислим их коэффициенты.
-
-        # Сначала определим, какие переменные базисные
+        # 2. Вычисляем выражение целевой функции через небазисные переменные
         is_basic = [False] * n
-        basic_row = [-1] * n  # для каждой переменной – номер строки, где она базисная
+        basic_row_for_var = [-1] * n
+
         for r in range(m):
-            basis_name = table.verticalHeaderItem(r).text()
+            basis_name = basis_vars[r]
             if basis_name.startswith('x'):
                 try:
                     var_num = int(basis_name[1:])
                     if 1 <= var_num <= n:
                         is_basic[var_num - 1] = True
-                        basic_row[var_num - 1] = r
+                        basic_row_for_var[var_num - 1] = r
                 except:
                     pass
 
-        # Строка F: длина n+1 (n коэффициентов и b)
-        F_row = [Fraction(0)] * (n + 1)
-        # Коэффициент при x_j в строке F:
-        # Если x_j базисная, то 0. Иначе: c_j - sum( c_{базисная} * a_{ij} ) по i, где a_{ij} – из A_new.
-        # Но c_{базисная} для базисной переменной x_k – это c_k.
-        # Поэтому проще: для каждого j небазисного:
-        # coef = c_j - sum_{i=0}^{m-1} c_{basis_var_i} * A_new[i][j]
-        # где basis_var_i – переменная, базисная в строке i.
+        F_coeff = [Fraction(0) for _ in range(n)]
+        F_const = Fraction(0)
+
         for j in range(n):
             if is_basic[j]:
-                F_row[j] = Fraction(0)
+                row = basic_row_for_var[j]
+                F_const += self.c_coeffs[j] * b_new[row]
+                for k in range(n):
+                    if not is_basic[k]:
+                        F_coeff[k] -= self.c_coeffs[j] * A_new[row][k]
             else:
-                coef = self.c_coeffs[j]
-                for i in range(m):
-                    basis_var_name = table.verticalHeaderItem(i).text()
-                    if basis_var_name.startswith('x'):
-                        try:
-                            bvar_num = int(basis_var_name[1:])
-                            if 1 <= bvar_num <= n:
-                                coef -= self.c_coeffs[bvar_num - 1] * A_new[i][j]
-                        except:
-                            pass
-                F_row[j] = coef
-        # Свободный член (столбец b)
-        # F_value = sum(c_j * x_j) = sum(c_basic * b_new[i]) – уже посчитано.
-        # Но в симплекс-таблице в правом нижнем углу обычно записывают -F_value (для min) или F_value (для max).
-        # Для единообразия с искусственным методом, где в последней строке был -F, поступим так:
-        # если у нас min, то в правом нижнем углу пишем -F_value, а коэффициенты при небазисных – со знаком минус (как в искусственном).
-        # Чтобы не усложнять, оставим F_row[j] как есть, а в правом углу – F_value (со знаком +).
-        # Но для работы кнопки выбора опорного элемента, которая ожидает отрицательные коэффициенты в строке F, нужно их инвертировать для min.
-        # Упростим: будем хранить F_row как коэффициенты при **небазисных** переменных в выражении F = const + sum(...),
-        # а в таблицу поместим их **со знаком минус** (как в искусственном базисе), чтобы выбор опорного столбца работал одинаково.
-        # Тогда правый нижний угол = -const (т.е. -F_value) для min.
-        if self.is_minimization:
-            for j in range(n):
-                F_row[j] = -F_row[j]  # инвертируем, чтобы в таблице были отрицательные коэффициенты для выбора
-            F_right = -F_value
-        else:
-            # Для максимизации можно преобразовать к минимизации, либо оставить логику выбора по положительным коэффициентам.
-            # Для простоты будем считать, что задача на min (преобразовать max в min умножением на -1).
-            # Поэтому требовать от пользователя, чтобы он ввёл задачу на min.
-            F_right = F_value  # не проверено для max
+                F_coeff[j] += self.c_coeffs[j]
 
-        # 3. Создаём новую таблицу QTableWidget для симплекс-метода
+        # 3. === ИСПРАВЛЕННЫЙ БЛОК СО ЗНАКАМИ ===
+        if self.is_minimization:
+            F_row = [F_coeff[j] for j in range(n)]  # для min — reduced costs как есть
+            F_right = -F_const
+        else:
+            F_row = [-F_coeff[j] for j in range(n)]  # для max — меняем знак
+            F_right = F_const
+
+        # 4. Создаём симплекс-таблицу
         simplex_table = QTableWidget()
         simplex_table.setRowCount(m + 1)
         simplex_table.setColumnCount(n + 1)
 
-        # Заголовки столбцов: x1, x2, ..., xn, b
         h_labels = [f"x{j + 1}" for j in range(n)] + ["b"]
         simplex_table.setHorizontalHeaderLabels(h_labels)
 
-        # Заголовки строк: базисные переменные (из последней таблицы) + "F"
-        v_labels = []
-        for r in range(m):
-            basis_var = table.verticalHeaderItem(r).text()
-            # Если базисная переменная – искусственная (x с номером > n), то заменяем её на соответствующую исходную?
-            # По идее, искусственные должны выйти из базиса. Но на всякий случай проверим.
-            if basis_var.startswith('x'):
-                try:
-                    num = int(basis_var[1:])
-                    if num > n:
-                        # Это искусственная переменная, но она не должна быть в базисе. Если оказалась, то задача несовместна.
-                        QMessageBox.critical(self, "Ошибка", "Искусственная переменная в базисе! Задача несовместна.")
-                        return
-                except:
-                    pass
-            v_labels.append(basis_var)
-        v_labels.append("F")
+        v_labels = basis_vars + ["F"]
         simplex_table.setVerticalHeaderLabels(v_labels)
 
-        # Заполняем коэффициенты ограничений
+        # Заполняем ограничения
         for i in range(m):
             for j in range(n):
                 item = QTableWidgetItem(str(A_new[i][j]))
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 simplex_table.setItem(i, j, item)
-            # Столбец b
             b_item = QTableWidgetItem(str(b_new[i]))
             b_item.setFlags(b_item.flags() & ~Qt.ItemIsEditable)
             simplex_table.setItem(i, n, b_item)
@@ -1120,13 +1036,12 @@ class LinearProblemInput(QMainWindow):
             f_item = QTableWidgetItem(str(F_row[j]))
             f_item.setFlags(f_item.flags() & ~Qt.ItemIsEditable)
             simplex_table.setItem(m, j, f_item)
-        # Правый нижний угол
+
         f_right_item = QTableWidgetItem(str(F_right))
         f_right_item.setFlags(f_right_item.flags() & ~Qt.ItemIsEditable)
         simplex_table.setItem(m, n, f_right_item)
 
-        # Отображаем таблицу на вкладке симплекс-метода
-        # Очищаем старые таблицы
+        # Отображаем
         while self.simplex_iterations_layout.count():
             item = self.simplex_iterations_layout.takeAt(0)
             if item.widget():
@@ -1137,18 +1052,22 @@ class LinearProblemInput(QMainWindow):
         self.simplex_iterations_layout.addWidget(simplex_table)
         self.simplex_tables.append(simplex_table)
 
-        # Подключаем обработчик клика по ячейке для выбора опорного элемента
         simplex_table.itemClicked.connect(self.simplex_on_cell_clicked)
 
-        # Активируем кнопки
         self.simplex_btn_back.setEnabled(True)
         self.simplex_btn_select.setEnabled(True)
         self.simplex_btn_auto.setEnabled(True)
 
-        # Сбрасываем выбор
         self.simplex_selected_row = -1
         self.simplex_selected_col = -1
         self.simplex_selected_table = None
+
+        # Информационное сообщение (можно оставить как есть)
+        expr = f"F = {F_const} + " + " + ".join(
+            [f"({F_coeff[j]})*x{j + 1}" for j in range(n) if F_coeff[j] != 0]) or "0"
+        QMessageBox.information(self, "Симплекс-таблица построена",
+                                f"Выражение целевой функции:\n{expr}\n\n"
+                                f"В таблице F-строка настроена для {'минимума' if self.is_minimization else 'максимума'}.")
 
     def _extract_basis_from_table(self, table):
         """Извлекает базисные переменные и их значения из последней симплекс-таблицы."""
