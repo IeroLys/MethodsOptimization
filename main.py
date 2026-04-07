@@ -40,6 +40,7 @@ class LinearProblemInput(QMainWindow):
         self.last_artificial_table = None  # QTableWidget
         self.last_artificial_basis = []  # список базисных переменных (например, ['x3','x4'])
         self.last_artificial_solution = []  # значения базисных переменных (Fraction)
+        self.last_artificial_basis_indices = []
 
         self.init_ui()
 
@@ -1093,7 +1094,6 @@ class LinearProblemInput(QMainWindow):
         self.simplex_selected_table = None
 
         QMessageBox.information(self, "Успех", "Симплекс-таблица построена")
-
 
     def calculate_f_row(self, A, b, basic_vars, c):
         # F_const, F_coeff = calculate_f_row(A, b, basic_vars, c)
