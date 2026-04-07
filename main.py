@@ -601,7 +601,7 @@ class LinearProblemInput(QMainWindow):
 
     #+ F = x5 + x6 -> min
     def update_newf(self):
-        opt_type = "min" # всегда min
+        opt_type = "min"
         artificial_vars = []
         for j in range(self.m_constrs):
             var_index = self.n_vars + j + 1
@@ -697,9 +697,10 @@ class LinearProblemInput(QMainWindow):
 
         # print(f"Выбран элемент: строка {row}, столбец {col} в таблице {id(self.selected_table_widget)}")
 
-    # не готово
+    # кнопка автомат.решения
     def on_auto_solve(self):
-        self.step_info.append("🚀 Запуск автоматического решения...")
+        QMessageBox.information(self, ":(",
+                                "Автоматическое решение пока не готово(")
 
     #+ Кнопка Шаг назад
     def on_step_back(self):
@@ -952,7 +953,7 @@ class LinearProblemInput(QMainWindow):
         rows = table.rowCount()
         cols = table.columnCount()
 
-        # Считываем всю таблицу в массив
+        # Считываем таблицу
         table_data = []
         for r in range(rows):
             row_vals = []
@@ -969,61 +970,62 @@ class LinearProblemInput(QMainWindow):
         col_headers = [table.horizontalHeaderItem(c).text() for c in range(cols)]
         row_headers = [table.verticalHeaderItem(r).text() for r in range(rows)]
 
-        # 1. Получаем индексы базисных переменных
+        # Получаем индексы базисных переменных
         basis_indices = []
         for r in range(rows - 1):  # без F
             var_name = row_headers[r]
             basis_indices.append(int(var_name[1:]) - 1) # число от x (x3) и для индекса
+        # print(basis_indices)
+        # [1, 0]
 
-        # 2. Сопоставляем столбцы с номерами переменных
+        # Сопоставляем столбцы с переменными
         var_to_col = {}
         for c in range(cols - 1):  # без b
             header = col_headers[c]
             var_num = int(header[1:]) - 1 # число от х (x3) и для индекса - 1 (2) -> x3 = 2
             var_to_col[var_num] = c
+        # print(var_to_col)
+        # {2: 0, 3: 1} x3 в 0 столбце, x4 в 1 столбце
 
-        # 3. Собираем A_full и b_new
-        A_full = [[Fraction(0) for _ in range(n)] for _ in range(m)]
-        b_vector = [Fraction(0) for _ in range(m)]
+        # Собираем A_full и b_vector
+        A_full = [[Fraction(0) for i in range(n)] for i in range(m)]
+        b_vector = [Fraction(0) for i in range(m)]
 
         for r in range(m):
             b_vector[r] = table_data[r][cols - 1]  # последний столбец
             for j in range(n):
-                if j in var_to_col:
-                    col = var_to_col[j]
-                    A_full[r][j] = table_data[r][col]
+                if j in var_to_col: # j - номер переменной x0 = 1, x1 = 2 и т.д.
+                    col = var_to_col[j] # столбец истинный
+                    A_full[r][j] = table_data[r][col] # значение нужное берём
 
-        # 4. Вычисляем новую F-строку
+        # Вычисляем новую F-строку
         F_const, F_coeff_full = self.calculate_f_row(
             A_full, b_vector, basis_indices, self.c_coeffs
         )
 
-        F_right = -F_const
-        new_f_row = F_coeff_full
+        F_right = -F_const # 5
+        new_f_row = F_coeff_full # посчитанная строка
 
-        # 6. Создаём новую таблицу (копируем старую)
+        # Создаём новую таблицу
         simplex_table = QTableWidget()
         simplex_table.setRowCount(rows)
         simplex_table.setColumnCount(cols)
         simplex_table.setHorizontalHeaderLabels(col_headers)
         simplex_table.setVerticalHeaderLabels(row_headers)
 
-        # Копируем данные
+        # Копируем таблицу из искусственного базиса table = self.last_artificial_table
         for r in range(rows):
             for c in range(cols):
                 item = QTableWidgetItem(str(table_data[r][c]))
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 simplex_table.setItem(r, c, item)
 
-        # 7. Заменяем F-строку
+        # Заменяем F-строку
         last_row = rows - 1
         for c in range(cols - 1):
             header = col_headers[c]
-            if header.startswith('x'):
-                var_num = int(header[1:]) - 1
-                val = new_f_row[var_num]
-            else:
-                val = Fraction(0)
+            var_num = int(header[1:]) - 1 # коэфф из F
+            val = new_f_row[var_num]
 
             item = QTableWidgetItem(str(val))
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)
@@ -1034,13 +1036,14 @@ class LinearProblemInput(QMainWindow):
         item.setFlags(item.flags() & ~Qt.ItemIsEditable)
         simplex_table.setItem(last_row, cols - 1, item)
 
-        # 8. Отображаем таблицу
+        # Очистка
         while self.simplex_iterations_layout.count():
             item = self.simplex_iterations_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
         self.simplex_tables.clear()
 
+        # Рисуем новую табличку
         self.simplex_iterations_layout.addWidget(QLabel("<b>Итерация 0 (начальная симплекс-таблица)</b>"))
         self.simplex_iterations_layout.addWidget(simplex_table)
         self.simplex_tables.append(simplex_table)
@@ -1278,82 +1281,24 @@ class LinearProblemInput(QMainWindow):
         self.simplex_selected_row = -1
         self.simplex_selected_col = -1
 
-        # Проверка оптимальности (для min: все коэффициенты в строке F >= 0)
-        last_row = new_table.rowCount() - 1
+        # Проверка оптимальности
+        last_row = len(new_data) - 1
         all_non_negative = True
-        for col in range(new_table.columnCount() - 1):  # кроме столбца b
-            item = new_table.item(last_row, col)
-            if item and self.parse_fraction(item.text()) < 0:
+        for c in range(len(new_data[0]) - 1):  # все столбцы кроме b
+            if new_data[last_row][c] < 0:
                 all_non_negative = False
                 break
+
         if all_non_negative:
             self.simplex_btn_select.setEnabled(False)
             self.simplex_btn_auto.setEnabled(False)
-            QMessageBox.information(self, "Оптимум найден",
+            QMessageBox.information(self, "Успех",
                                     "Симплекс-метод завершён. Достигнуто оптимальное решение.")
 
     # кнопка авто-решения
     def simplex_auto_solve(self):
-        """Автоматически решает задачу симплекс-методом."""
-        # Проверяем, что таблица есть
-        if not self.simplex_tables:
-            QMessageBox.warning(self, "Нет данных", "Сначала постройте начальную симплекс-таблицу.")
-            return
-
-        current_table = self.simplex_tables[-1]
-        iteration = 0
-        max_iter = 100  # защита от зацикливания
-
-        while iteration < max_iter:
-            # Ищем отрицательный коэффициент в строке F (для min)
-            last_row = current_table.rowCount() - 1
-            pivot_col = -1
-            for col in range(current_table.columnCount() - 1):  # кроме b
-                item = current_table.item(last_row, col)
-                if item and self.parse_fraction(item.text()) < 0:
-                    pivot_col = col
-                    break
-
-            if pivot_col == -1:
-                QMessageBox.information(self, "Оптимум", "Достигнуто оптимальное решение.")
-                break
-
-            # Ищем опорную строку по минимальному отношению b / a_ij (a_ij > 0)
-            pivot_row = -1
-            min_ratio = None
-            for row in range(self.m_constrs):
-                a_ij_item = current_table.item(row, pivot_col)
-                if not a_ij_item:
-                    continue
-                a_ij = self.parse_fraction(a_ij_item.text())
-                if a_ij > 0:
-                    b_item = current_table.item(row, current_table.columnCount() - 1)
-                    b_val = self.parse_fraction(b_item.text()) if b_item else Fraction(0)
-                    ratio = b_val / a_ij
-                    if min_ratio is None or ratio < min_ratio:
-                        min_ratio = ratio
-                        pivot_row = row
-
-            if pivot_row == -1:
-                QMessageBox.warning(self, "Ошибка", "Целевая функция не ограничена (нет опорной строки).")
-                return
-
-            # Выбираем ячейку и выполняем шаг
-            self.simplex_selected_row = pivot_row
-            self.simplex_selected_col = pivot_col
-            self.simplex_selected_table = current_table
-
-            # Выполняем преобразование
-            try:
-                self.simplex_perform_opor()
-                current_table = self.simplex_tables[-1]
-                iteration += 1
-            except Exception as e:
-                QMessageBox.critical(self, "Ошибка", f"Ошибка на итерации {iteration}: {e}")
-                return
-
-        if iteration >= max_iter:
-            QMessageBox.warning(self, "Предупреждение", "Достигнуто максимальное число итераций.")
+        QMessageBox.information(self, ":(",
+                                "Автоматическое решение пока не готово(")
 
 def main():
     app = QApplication(sys.argv)
