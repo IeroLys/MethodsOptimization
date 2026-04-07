@@ -108,9 +108,8 @@ class LinearProblemInput(QMainWindow):
         self.min_radio.setChecked(True)
         self.opt_group.addButton(self.min_radio)
         self.opt_group.addButton(self.max_radio)
-
-        self.min_radio.toggled.connect(self.update_problem_text)
-        self.max_radio.toggled.connect(self.update_problem_text)
+        # self.min_radio.toggled.connect(self.update_problem_text)
+        # self.max_radio.toggled.connect(self.update_problem_text)
 
         opt_layout.addWidget(self.min_radio)
         opt_layout.addWidget(self.max_radio)
@@ -131,21 +130,6 @@ class LinearProblemInput(QMainWindow):
 
         left_layout.addStretch()
         top_layout.addWidget(left_panel)
-
-        # справа: задача текстом
-        right_panel = QWidget()
-        right_layout = QVBoxLayout(right_panel)
-
-        right_layout.addWidget(QLabel("Постановка задачи:"))
-
-        self.problem_text = QTextEdit()
-        self.problem_text.setReadOnly(True)
-        self.problem_text.setMinimumHeight(200)
-        self.problem_text.setFontFamily("Consolas")
-        self.problem_text.setStyleSheet("QTextEdit { background-color: #f5f5f5; border: 1px solid #ccc; }")
-        right_layout.addWidget(self.problem_text)
-
-        top_layout.addWidget(right_panel)
         layout.addLayout(top_layout)
 
         # Матрица ограничений
@@ -154,7 +138,7 @@ class LinearProblemInput(QMainWindow):
 
         self.table_widget = QTableWidget()
         self.table_widget.horizontalHeader().setStretchLastSection(True)
-        self.table_widget.cellChanged.connect(self.update_problem_text)
+        # self.table_widget.cellChanged.connect(self.update_problem_text)
 
         matrix_layout.addWidget(self.table_widget)
 
@@ -320,7 +304,7 @@ class LinearProblemInput(QMainWindow):
 
         self._update_c_inputs()
         self._update_matrix_table()
-        self.update_problem_text()
+        #self.update_problem_text()
 
     #+ Плашки с C коэффициентами
     def _update_c_inputs(self):
@@ -337,8 +321,7 @@ class LinearProblemInput(QMainWindow):
             edit.setValidator(QRegularExpressionValidator(
                 QRegularExpression(r"^-?\d*\.?\d*(/\d+)?$"))) #числа и дроби   - 0 . /
 
-            # обновление постановки задачи при вводе коэффициентов
-            edit.textChanged.connect(self.update_problem_text)
+            # edit.textChanged.connect(self.update_problem_text)
 
             # а теперь добавляем
             self.c_layout.addWidget(label)
@@ -369,77 +352,10 @@ class LinearProblemInput(QMainWindow):
         # включаем сигнал обратно
         self.table_widget.blockSignals(False)
         # обновляем текст
-        self.update_problem_text()
+        # self.update_problem_text()
 
-    # Текст постановки задачи
-    def update_problem_text(self):
-        # Собираем коэффициенты целевой функции
-        c_values = []
-        for edit in self.c_inputs:
-            text = edit.text().strip()
-            c_values.append(text if text else "0")
-
-        # Тип оптимизации
-        opt_type = "min" if self.min_radio.isChecked() else "max"
-
-        # Формируем целевую функцию
-        f_parts = []
-        for j, c in enumerate(c_values):
-            if c == "0":
-                continue
-            if j == 0:
-                f_parts.append(f"{c}x{j + 1}")
-            else:
-                if c.startswith("-"):
-                    f_parts.append(f" - {c[1:]}x{j + 1}")
-                else:
-                    f_parts.append(f" + {c}x{j + 1}")
-
-        f_string = " ".join(f_parts) if f_parts else "0"
-
-        # Формируем ограничения
-        constr_lines = []
-        for i in range(self.m_constrs):
-            row_parts = []
-            for j in range(self.n_vars):
-                item = self.table_widget.item(i, j)
-                val = item.text().strip() if item else "0"
-                if val == "0":
-                    continue
-                if j == 0:
-                    row_parts.append(f"{val}x{j + 1}")
-                else:
-                    if val.startswith("-"):
-                        row_parts.append(f" - {val[1:]}x{j + 1}")
-                    else:
-                        row_parts.append(f" + {val}x{j + 1}")
-
-            row_string = " ".join(row_parts) if row_parts else "0"
-
-            # Правая часть
-            item_b = self.table_widget.item(i, self.n_vars)
-            b_val = item_b.text().strip() if item_b else "0"
-
-            constr_lines.append(f"{row_string} = {b_val}")
-
-        # Формируем условия неотрицательности
-        x_nonneg = ", ".join([f"x{j + 1}" for j in range(self.n_vars)])
-
-        # Собираем всё вместе
-        problem_html = f"""
-        <div style="font-size: 14px; line-height: 1.8;">
-            <p><b>C целевая функция:</b><br>
-            F = {f_string} → {opt_type}</p>
-
-            <p><b>Ограничения:</b><br>
-            {'<br>'.join(constr_lines)}</p>
-
-            <p><b>Условия неотрицательности:</b><br>
-            {x_nonneg} ≥ 0</p>
-        </div>
-        """
-
-        self.problem_text.setHtml(problem_html)
+    # Тут была кривая функция :D
+    # def update_problem_text(self):
 
     def parse_fraction(self, text):
         """Парсинг числа из строки (поддержка дробей)"""
@@ -574,16 +490,16 @@ class LinearProblemInput(QMainWindow):
             for edit in self.c_inputs:
                 edit.clear()
 
-            # 🔥 Отключаем сигнал перед очисткой таблицы
+            # отключаем сигнал перед очисткой таблицы
             self.table_widget.blockSignals(True)
             for i in range(self.table_widget.rowCount()):
                 for j in range(self.table_widget.columnCount()):
                     item = self.table_widget.item(i, j)
                     if item:
                         item.setText("")
-            # 🔥 Включаем сигнал и обновляем текст один раз
+            # включаем сигнал
             self.table_widget.blockSignals(False)
-            self.update_problem_text()
+            # self.update_problem_text()
 
             self.btn_step_back.setEnabled(False)
             self.btn_auto_solve.setEnabled(False)
