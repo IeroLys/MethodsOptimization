@@ -297,7 +297,7 @@ class LinearProblemInput(QMainWindow):
         scroll_layout.addStretch()
 
     """ Первая вкладка """
-    #+ обновление данных при изменении размерности
+    # Обновление данных при изменении размерности
     def on_razmernost_changed(self):
         self.n_vars = self.n_spin.value()
         self.m_constrs = self.m_spin.value()
@@ -306,7 +306,7 @@ class LinearProblemInput(QMainWindow):
         self._update_matrix_table()
         #self.update_problem_text()
 
-    #+ Плашки с C коэффициентами
+    # Плашки с C коэффициентами
     def _update_c_inputs(self):
         # очищаем сначала
         while self.c_layout.count():
@@ -328,7 +328,7 @@ class LinearProblemInput(QMainWindow):
             self.c_layout.addWidget(edit)
             self.c_inputs.append(edit)
 
-    # обновление таблицы матрицы ограничений
+    # Обновление таблицы матрицы ограничений
     def _update_matrix_table(self):
         self.table_widget.setRowCount(self.m_constrs)
         self.table_widget.setColumnCount(self.n_vars + 1)
@@ -357,15 +357,15 @@ class LinearProblemInput(QMainWindow):
     # Тут была кривая функция :D
     # def update_problem_text(self):
 
+    # Дроби
     def parse_fraction(self, text):
-        """Парсинг числа из строки (поддержка дробей)"""
         text = text.strip().replace(',', '.')
         if not text:
             return Fraction(0)
         try:
             if '/' in text:
-                num, den = text.split('/')
-                return Fraction(int(num), int(den))
+                chisl, znam = text.split('/')
+                return Fraction(int(chisl), int(znam))
             else:
                 return Fraction(text)
         except:
@@ -410,13 +410,11 @@ class LinearProblemInput(QMainWindow):
         # краказябра в ячейке вместо числа
         except ValueError as e:
             QMessageBox.critical(self, "Ошибка ввода", str(e))
-        # что-то другое
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Неизвестная ошибка: {e}")
 
     # Кнопка Сохранить в файл
     def save_to_file(self):
-        """Сохранение задачи в файл"""
         try:
             self.validate_and_save()
 
@@ -442,7 +440,6 @@ class LinearProblemInput(QMainWindow):
 
     # Кнопка Загрузить из файла
     def load_from_file(self):
-        """Загрузка задачи из файла"""
         try:
             file_path, _ = QFileDialog.getOpenFileName(
                 self, "Загрузить задачу", "", "JSON Files (*.json);;All Files (*)")
@@ -507,7 +504,7 @@ class LinearProblemInput(QMainWindow):
 
     """ Вторая вкладка """
 
-    #+ F = x5 + x6 -> min
+    # F = x5 + x6 -> min
     def update_newf(self):
         opt_type = "min"
         artificial_vars = []
@@ -518,9 +515,8 @@ class LinearProblemInput(QMainWindow):
         formula = f"F = {vars_string} -> {opt_type}"
         self.newF.setText(formula)
 
-    #+ x* = (0,0,0,0,4,1)
+    # x* = (0,0,0,0,4,1)
     def update_newf_res(self):
-        # массив с ноликами
         solution = ["0"] * self.n_vars
         # значения из вектора b
         for i in range(len(self.vector_b)):
@@ -529,7 +525,7 @@ class LinearProblemInput(QMainWindow):
         formula = f"x*0 = ({vars_string})"
         self.newF_res.setText(formula)
 
-    #Fraction Первая X*0 таблица, 0 итерация
+    # x*0 таблица
     def update_x0isc_table(self):
 
         # очищаем всё насозданное
@@ -543,7 +539,7 @@ class LinearProblemInput(QMainWindow):
         new_table = QTableWidget()
         new_table.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         new_table.setSelectionBehavior(QTableWidget.SelectItems)
-        new_table.itemClicked.connect(self.on_table_cell_clicked) # для выбора опорного элемента
+        new_table.itemClicked.connect(self.on_table_cell_clicked)
         new_table.setRowCount(self.m_constrs + 1)
         new_table.setColumnCount(self.n_vars + 1)
 
@@ -595,7 +591,7 @@ class LinearProblemInput(QMainWindow):
         self.selected_row = -1
         self.selected_col = -1
 
-    #+ выбор опорной ячейки в таблице
+    # Выбор опорной ячейки в таблице
     def on_table_cell_clicked(self, item):
         row = item.row()
         col = item.column()
@@ -605,12 +601,12 @@ class LinearProblemInput(QMainWindow):
 
         # print(f"Выбран элемент: строка {row}, столбец {col} в таблице {id(self.selected_table_widget)}")
 
-    # кнопка автомат.решения
+    # Кнопка автомат.решения
     def on_auto_solve(self):
         QMessageBox.information(self, ":(",
                                 "Автоматическое решение пока не готово(")
 
-    #+ Кнопка Шаг назад
+    # Кнопка Шаг назад
     def on_step_back(self):
         if len(self.iteration_tables) <= 1:
             QMessageBox.information(self, "Инфо", "Нечего возвращать! Это начальная таблица.")
@@ -636,7 +632,7 @@ class LinearProblemInput(QMainWindow):
 
         QMessageBox.information(self, "Готово", "Возврат выполнен!")
 
-    #+ Кнопка Выбрать опорный элемент - проверки
+    # Кнопка Выбрать опорный элемент - проверки
     def on_select_opor(self):
         if self.selected_row == -1 or self.selected_col == -1:
             QMessageBox.warning(self, "Внимание", "Сначала выберите ячейку в таблице!")
@@ -684,7 +680,7 @@ class LinearProblemInput(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Сбой преобразования:\n{str(e)}")
 
-    #+- Итерации
+    # Итерации
     def perform_opor(self):
         # копируем данные
         current_table = self.iteration_tables[-1]
@@ -725,8 +721,6 @@ class LinearProblemInput(QMainWindow):
                 new_v_labels.append(old_h_labels[self.selected_col])
         # print(new_v_labels)
 
-
-        new_data = []
         r_opor = self.selected_row
         c_opor = self.selected_col
         opor_el = table_data[r_opor][c_opor]
@@ -786,7 +780,6 @@ class LinearProblemInput(QMainWindow):
         # print()
 
         # Рисуем таблицу
-
         new_table = QTableWidget()
         new_table.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         new_table.setSelectionBehavior(QTableWidget.SelectItems)
@@ -821,7 +814,7 @@ class LinearProblemInput(QMainWindow):
                     pass
 
         # Добавляем таблицу в интерфейс
-        iter_num = len(self.iteration_tables)  # Номер новой итерации
+        iter_num = len(self.iteration_tables)
         self.iterations_layout.addWidget(QLabel(f"<b>Итерация *{iter_num}</b>"))
         self.iterations_layout.addWidget(new_table)
         self.iteration_tables.append(new_table)
@@ -847,7 +840,7 @@ class LinearProblemInput(QMainWindow):
 
     """ Третья вкладка """
 
-    # построение x0 таблицы
+    # Построение x0 таблицы
     def build_x0_table(self):
         if self.last_artificial_table is None:
             QMessageBox.warning(self, "Нет данных",
@@ -968,24 +961,18 @@ class LinearProblemInput(QMainWindow):
 
         QMessageBox.information(self, "Успех", "Симплекс-таблица построена")
 
+    # Пересчёт f строки
     def calculate_f_row(self, A, b, basic_vars, c):
-        # F_const, F_coeff = calculate_f_row(A, b, basic_vars, c)
 
-        # Твои данные
         # A = [
-        #     [2, -1],  # строка x₂: коэффициенты при x₃, x₄
-        #     [1, 1]  # строка x₁: коэффициенты при x₃, x₄
+        #     [2, -1],
+        #     [1, 1]
         # ]
         # b = [1, 2]
         # basic_vars = [1, 0]  # в строке 0 базисная x₂ (номер 1), в строке 1 базисная x₁ (номер 0)
-        # c = [-2, -1, -3, -1]  # коэффициенты при x₁, x₂, x₃, x₄
+        # c = [-2, -1, -3, -1]  # коэффициенты в F
 
-        """
-        A: список списков [[a11, a12, ...], [a21, a22, ...]]
-        b: список [b1, b2, ...]
-        basic_vars: список [номер_базисной_переменной_в_строке0, ...]
-        c: список коэффициентов целевой функции для ВСЕХ переменных
-        """
+
         m = len(A)  # количество строк (базисных переменных)
         n = len(c)  # общее количество переменных
 
@@ -1011,7 +998,7 @@ class LinearProblemInput(QMainWindow):
 
         return F_const, F_coeff
 
-    #+ выбор опорной ячейки в симплекс таблице
+    # Выбор опорной ячейки в симплекс таблице
     def simplex_on_cell_clicked(self, item):
         row = item.row()
         col = item.column()
@@ -1019,7 +1006,7 @@ class LinearProblemInput(QMainWindow):
         self.simplex_selected_col = col
         self.simplex_selected_table = item.tableWidget()
 
-    #+ кнопка Выбрать опорный элемент - обработки
+    # Кнопка Выбрать опорный элемент - обработки
     def simplex_on_select_opor(self):
         if self.simplex_selected_row == -1 or self.simplex_selected_col == -1:
             QMessageBox.warning(self, "Внимание", "Сначала выберите ячейку в таблице!")
@@ -1050,7 +1037,6 @@ class LinearProblemInput(QMainWindow):
             QMessageBox.warning(self, "Внимание", "Опорный элемент должен быть > 0!")
             return
 
-        # Для задачи на минимизацию: коэффициент в строке F должен быть отрицательным
         f_itm = current_table.item(self.m_constrs, col)
         if f_itm and f_itm.text():
             try:
@@ -1068,7 +1054,7 @@ class LinearProblemInput(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Сбой преобразования:\n{str(e)}")
 
-    #+ кнопка Шаг назад
+    # Кнопка Шаг назад
     def simplex_on_step_back(self):
         if len(self.simplex_tables) <= 1:
             QMessageBox.information(self, "Инфо", "Нечего возвращать! Это начальная таблица.")
@@ -1090,7 +1076,7 @@ class LinearProblemInput(QMainWindow):
 
         QMessageBox.information(self, "Готово", "Возврат выполнен!")
 
-    #+- итерации
+    # Итерации
     def simplex_perform_opor(self):
         current_table = self.simplex_tables[-1]
         rows = current_table.rowCount()
@@ -1203,7 +1189,7 @@ class LinearProblemInput(QMainWindow):
             QMessageBox.information(self, "Успех",
                                     "Симплекс-метод завершён. Достигнуто оптимальное решение.")
 
-    # кнопка авто-решения
+    # Кнопка авто-решения
     def simplex_auto_solve(self):
         QMessageBox.information(self, ":(",
                                 "Автоматическое решение пока не готово(")
