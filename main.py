@@ -453,7 +453,7 @@ class LinearProblemInput(QMainWindow):
                 self.m_spin.setValue(data['m'])
                 self.on_razmernost_changed()
 
-                for i, val in enumerate(data['c']):
+                for i, val in enumerate(data['c']): # список коэффициентов F
                     if i < len(self.c_inputs):
                         self.c_inputs[i].setText(val)
 
