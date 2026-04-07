@@ -485,6 +485,10 @@ class LinearProblemInput(QMainWindow):
 
             self.is_minimization = self.min_radio.isChecked()
 
+            if not self.is_minimization:
+                self.c_coeffs = [-c for c in self.c_coeffs]
+                self.is_minimization = True
+
             self.update_newf()
             self.update_newf_res()
             self.update_x0isc_table()
@@ -945,134 +949,92 @@ class LinearProblemInput(QMainWindow):
         m = self.m_constrs
         table = self.last_artificial_table
 
-
-        # 1. Извлекаем базисные переменные из последней таблицы
-
         rows = table.rowCount()
         cols = table.columnCount()
-        self.last_artificial_basis = []
-        self.last_artificial_solution = []
-        self.last_artificial_basis_indices = []  # числовые индексы базисных переменных
 
-        for r in range(rows - 1):  # последняя строка – F
-            var_name = table.verticalHeaderItem(r).text()
-            self.last_artificial_basis.append(var_name)
-
-            # Извлекаем числовой индекс переменной
-            if var_name.startswith('x'):
+        # Считываем всю таблицу в массив
+        table_data = []
+        for r in range(rows):
+            row_vals = []
+            for c in range(cols):
+                item = table.item(r, c)
                 try:
-                    var_num = int(var_name[1:]) - 1  # переводим в 0-индексацию
-                    self.last_artificial_basis_indices.append(var_num)
+                    val = self.parse_fraction(item.text()) if item and item.text() else Fraction(0)
                 except:
-                    self.last_artificial_basis_indices.append(-1)
-            else:
-                self.last_artificial_basis_indices.append(-1)
+                    val = Fraction(0)
+                row_vals.append(val)
+            table_data.append(row_vals)
 
-            b_item = table.item(r, cols - 1)
-            val = self.parse_fraction(b_item.text()) if b_item else Fraction(0)
-            self.last_artificial_solution.append(val)
+        # Заголовки
+        col_headers = [table.horizontalHeaderItem(c).text() for c in range(cols)]
+        row_headers = [table.verticalHeaderItem(r).text() for r in range(rows)]
 
-        basis_vars_indices = self.last_artificial_basis_indices
+        # 1. Получаем индексы базисных переменных
+        basis_indices = []
+        for r in range(rows - 1):  # без F
+            var_name = row_headers[r]
+            basis_indices.append(int(var_name[1:]) - 1) # число от x (x3) и для индекса
 
-        # 2. Собираем коэффициенты ограничений для ВСЕХ переменных
-        #    (включая базисные, но коэффициенты для них будут 0 или 1)
+        # 2. Сопоставляем столбцы с номерами переменных
+        var_to_col = {}
+        for c in range(cols - 1):  # без b
+            header = col_headers[c]
+            var_num = int(header[1:]) - 1 # число от х (x3) и для индекса - 1 (2) -> x3 = 2
+            var_to_col[var_num] = c
 
-        # Сначала определим все переменные, которые есть в таблице
-        all_vars_in_table = []
-        col_index = {}
-        for c in range(table.columnCount()):
-            header = table.horizontalHeaderItem(c).text()
-            if header != "b":
-                all_vars_in_table.append(header)
-                col_index[header] = c
-
-        # Создаем полную матрицу A размером m x n (только для исходных переменных x1..xn)
+        # 3. Собираем A_full и b_new
         A_full = [[Fraction(0) for _ in range(n)] for _ in range(m)]
-        b_new = [Fraction(0) for _ in range(m)]
+        b_vector = [Fraction(0) for _ in range(m)]
 
         for r in range(m):
-            # Значение базисной переменной (правая часть)
-            b_item = table.item(r, table.columnCount() - 1)
-            b_new[r] = self.parse_fraction(b_item.text()) if b_item else Fraction(0)
-
-            # Коэффициенты при всех исходных переменных x1..xn
+            b_vector[r] = table_data[r][cols - 1]  # последний столбец
             for j in range(n):
-                var_name = f"x{j + 1}"
-                if var_name in col_index:
-                    col = col_index[var_name]
-                    item = table.item(r, col)
-                    val = self.parse_fraction(item.text()) if item else Fraction(0)
-                    A_full[r][j] = val
+                if j in var_to_col:
+                    col = var_to_col[j]
+                    A_full[r][j] = table_data[r][col]
 
-        # 3. Вычисляем целевую функцию через свободные переменные
-        #    Для calculate_f_row нужна матрица A_full для всех переменных
+        # 4. Вычисляем новую F-строку
         F_const, F_coeff_full = self.calculate_f_row(
-            A_full,
-            b_new,
-            basis_vars_indices,
-            self.c_coeffs
+            A_full, b_vector, basis_indices, self.c_coeffs
         )
 
-        # 4. Определяем свободные переменные (те, которые не в базисе)
-        free_vars = []
-        free_vars_indices = []
-        for j in range(n):
-            if j not in basis_vars_indices:
-                free_vars.append(f"x{j + 1}")
-                free_vars_indices.append(j)
+        F_right = -F_const
+        new_f_row = F_coeff_full
 
-        num_free = len(free_vars)
-
-        # 5. Собираем F_row только для свободных переменных
-        F_row = [F_coeff_full[j] for j in free_vars_indices]
-
-        # 6. Настраиваем знаки в зависимости от типа оптимизации
-        if self.is_minimization:
-            # Для min: оставляем как есть (reduced costs)
-            F_right = -F_const
-        else:
-            # Для max: меняем знак
-            F_row = [-val for val in F_row]
-            F_right = F_const
-
-        # 7. Создаём матрицу A только для свободных переменных
-        A_free = [[Fraction(0) for _ in range(num_free)] for _ in range(m)]
-        for i in range(m):
-            for j_idx, j in enumerate(free_vars_indices):
-                A_free[i][j_idx] = A_full[i][j]
-
-        # 8. Создаём симплекс-таблицу
+        # 6. Создаём новую таблицу (копируем старую)
         simplex_table = QTableWidget()
-        simplex_table.setRowCount(m + 1)
-        simplex_table.setColumnCount(num_free + 1)  # +1 для столбца b
+        simplex_table.setRowCount(rows)
+        simplex_table.setColumnCount(cols)
+        simplex_table.setHorizontalHeaderLabels(col_headers)
+        simplex_table.setVerticalHeaderLabels(row_headers)
 
-        h_labels = free_vars + ["b"]
-        simplex_table.setHorizontalHeaderLabels(h_labels)
-
-        v_labels = self.last_artificial_basis + ["F"]
-        simplex_table.setVerticalHeaderLabels(v_labels)
-
-        # Заполняем ограничения
-        for i in range(m):
-            for j in range(num_free):
-                item = QTableWidgetItem(str(A_free[i][j]))
+        # Копируем данные
+        for r in range(rows):
+            for c in range(cols):
+                item = QTableWidgetItem(str(table_data[r][c]))
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                simplex_table.setItem(i, j, item)
-            b_item = QTableWidgetItem(str(b_new[i]))
-            b_item.setFlags(b_item.flags() & ~Qt.ItemIsEditable)
-            simplex_table.setItem(i, num_free, b_item)
+                simplex_table.setItem(r, c, item)
 
-        # Заполняем строку F
-        for j in range(num_free):
-            f_item = QTableWidgetItem(str(F_row[j]))
-            f_item.setFlags(f_item.flags() & ~Qt.ItemIsEditable)
-            simplex_table.setItem(m, j, f_item)
+        # 7. Заменяем F-строку
+        last_row = rows - 1
+        for c in range(cols - 1):
+            header = col_headers[c]
+            if header.startswith('x'):
+                var_num = int(header[1:]) - 1
+                val = new_f_row[var_num]
+            else:
+                val = Fraction(0)
 
-        f_right_item = QTableWidgetItem(str(F_right))
-        f_right_item.setFlags(f_right_item.flags() & ~Qt.ItemIsEditable)
-        simplex_table.setItem(m, num_free, f_right_item)
+            item = QTableWidgetItem(str(val))
+            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+            simplex_table.setItem(last_row, c, item)
 
-        # Отображаем таблицу
+        # Правый столбец
+        item = QTableWidgetItem(str(F_right))
+        item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+        simplex_table.setItem(last_row, cols - 1, item)
+
+        # 8. Отображаем таблицу
         while self.simplex_iterations_layout.count():
             item = self.simplex_iterations_layout.takeAt(0)
             if item.widget():
@@ -1122,19 +1084,18 @@ class LinearProblemInput(QMainWindow):
 
         # 3. Основной цикл по всем переменным
         for j in range(n):
-            if j in basic_vars:
-                # j — базисная переменная
+            if j in basic_vars: # если базисная
                 row = basic_vars.index(j)  # номер строки, где эта переменная в базисе
 
-                # Действие А: прибавляем c_B * b
+                # Действие А: 0 + (Ci * b)
                 F_const += c[j] * b[row]
 
-                # Действие Б: вычитаем c_B * a для всех свободных переменных
+                # Действие Б: 0 - Ci * (число из таблицы)
                 for k in range(n):
                     if k not in basic_vars:  # только для свободных
                         F_coeff[k] -= c[j] * A[row][k]
             else:
-                # j — свободная переменная
+                # Для свободной переменной складываем "остаток"
                 F_coeff[j] += c[j]
 
         return F_const, F_coeff
