@@ -926,9 +926,6 @@ class LinearProblemInput(QMainWindow):
                 break
         if all_zero:
             self.last_artificial_table = new_table
-            # Извлечём базисные переменные и их значения
-            self._extract_basis_from_table(new_table)
-            # Можно разблокировать кнопку перехода к симплексу
             self.btn_to_simplex.setEnabled(True)
             QMessageBox.information(self, "Искусственный метод завершён",
                                     "Получено допустимое базисное решение.\n"
@@ -938,8 +935,6 @@ class LinearProblemInput(QMainWindow):
 
     # построение x0 таблицы
     def build_x0_table(self):
-        """Строит первую симплекс-таблицу для исходной задачи
-        на основе последней таблицы искусственного метода."""
         if self.last_artificial_table is None:
             QMessageBox.warning(self, "Нет данных",
                                 "Сначала решите задачу методом искусственного базиса до конца.")
@@ -949,8 +944,33 @@ class LinearProblemInput(QMainWindow):
         m = self.m_constrs
         table = self.last_artificial_table
 
+
         # 1. Извлекаем базисные переменные из последней таблицы
-        self._extract_basis_from_table(table)
+
+        rows = table.rowCount()
+        cols = table.columnCount()
+        self.last_artificial_basis = []
+        self.last_artificial_solution = []
+        self.last_artificial_basis_indices = []  # числовые индексы базисных переменных
+
+        for r in range(rows - 1):  # последняя строка – F
+            var_name = table.verticalHeaderItem(r).text()
+            self.last_artificial_basis.append(var_name)
+
+            # Извлекаем числовой индекс переменной
+            if var_name.startswith('x'):
+                try:
+                    var_num = int(var_name[1:]) - 1  # переводим в 0-индексацию
+                    self.last_artificial_basis_indices.append(var_num)
+                except:
+                    self.last_artificial_basis_indices.append(-1)
+            else:
+                self.last_artificial_basis_indices.append(-1)
+
+            b_item = table.item(r, cols - 1)
+            val = self.parse_fraction(b_item.text()) if b_item else Fraction(0)
+            self.last_artificial_solution.append(val)
+
         basis_vars_indices = self.last_artificial_basis_indices
 
         # 2. Собираем коэффициенты ограничений для ВСЕХ переменных
@@ -1051,9 +1071,6 @@ class LinearProblemInput(QMainWindow):
         f_right_item.setFlags(f_right_item.flags() & ~Qt.ItemIsEditable)
         simplex_table.setItem(m, num_free, f_right_item)
 
-        # Настройка внешнего вида
-        simplex_table.resizeColumnsToContents()
-
         # Отображаем таблицу
         while self.simplex_iterations_layout.count():
             item = self.simplex_iterations_layout.takeAt(0)
@@ -1075,16 +1092,8 @@ class LinearProblemInput(QMainWindow):
         self.simplex_selected_col = -1
         self.simplex_selected_table = None
 
-        # Информационное сообщение
-        expr_parts = []
-        for j in range(num_free):
-            if F_row[j] != 0:
-                expr_parts.append(f"({F_row[j]})*{free_vars[j]}")
-        expr = f"F = {F_const} + " + " + ".join(expr_parts) if expr_parts else f"F = {F_const}"
+        QMessageBox.information(self, "Успех", "Симплекс-таблица построена")
 
-        QMessageBox.information(self, "Симплекс-таблица построена",
-                                f"Выражение целевой функции через свободные переменные:\n{expr}\n\n"
-                                f"В таблице F-строка настроена для {'минимума' if self.is_minimization else 'максимума'}.")
 
     def calculate_f_row(self, A, b, basic_vars, c):
         # F_const, F_coeff = calculate_f_row(A, b, basic_vars, c)
@@ -1129,32 +1138,6 @@ class LinearProblemInput(QMainWindow):
                 F_coeff[j] += c[j]
 
         return F_const, F_coeff
-
-    def _extract_basis_from_table(self, table):
-        """Извлекает базисные переменные и их значения из последней симплекс-таблицы."""
-        rows = table.rowCount()
-        cols = table.columnCount()
-        self.last_artificial_basis = []
-        self.last_artificial_solution = []
-        self.last_artificial_basis_indices = []  # числовые индексы базисных переменных
-
-        for r in range(rows - 1):  # последняя строка – F
-            var_name = table.verticalHeaderItem(r).text()
-            self.last_artificial_basis.append(var_name)
-
-            # Извлекаем числовой индекс переменной
-            if var_name.startswith('x'):
-                try:
-                    var_num = int(var_name[1:]) - 1  # переводим в 0-индексацию
-                    self.last_artificial_basis_indices.append(var_num)
-                except:
-                    self.last_artificial_basis_indices.append(-1)
-            else:
-                self.last_artificial_basis_indices.append(-1)
-
-            b_item = table.item(r, cols - 1)
-            val = self.parse_fraction(b_item.text()) if b_item else Fraction(0)
-            self.last_artificial_solution.append(val)
 
     #+ выбор опорной ячейки в симплекс таблице
     def simplex_on_cell_clicked(self, item):
