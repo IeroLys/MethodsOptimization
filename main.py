@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QRadioButton, QButtonGroup, QMessageBox, QGroupBox,
                              QFileDialog, QScrollArea, QTabWidget, QTextEdit, QSizePolicy)
 from PyQt5.QtCore import Qt, QRegularExpression
-from PyQt5.QtGui import QRegularExpressionValidator, QBrush, QColor
+from PyQt5.QtGui import QRegularExpressionValidator, QColor
 
 
 class LinearProblemInput(QMainWindow):
@@ -37,15 +37,12 @@ class LinearProblemInput(QMainWindow):
         self.simplex_selected_table = None
 
         # Для хранения последней таблицы искусственного метода
-        self.last_artificial_table = None  # QTableWidget
-        self.last_artificial_basis = []  # список базисных переменных (например, ['x3','x4'])
-        self.last_artificial_solution = []  # значения базисных переменных (Fraction)
-        self.last_artificial_basis_indices = []
+        self.last_artificial_table = None
 
         self.init_ui()
 
     def init_ui(self):
-        """Создание главного интерфейса с вкладками"""
+        # Главный интерфейс со вкладками
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
@@ -68,19 +65,19 @@ class LinearProblemInput(QMainWindow):
         self.tabs.addTab(self.tab_simplex_method, "Симплекс метод")
         self._init_simplex_method_tab()
 
-    # ВКЛАДКА 1: УСЛОВИЯ ЗАДАЧИ
+    # Вкладка 1
     def _init_conditions_tab(self):
         layout = QVBoxLayout(self.tab_conditions)
 
-        # Верхняя часть: слева ввод, справа отображение задачи
+        # слева ввод, справа отображение задачи
         top_layout = QHBoxLayout()
 
-        # === ЛЕВАЯ ПАНЕЛЬ: Ввод параметров ===
+        # слева: ввод параметров
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_panel.setMaximumWidth(500)
 
-        # Блок размерности
+        # блок размерности
         dim_group = QGroupBox("Размерность задачи")
         dim_layout = QGridLayout()
 
@@ -101,7 +98,7 @@ class LinearProblemInput(QMainWindow):
         dim_group.setLayout(dim_layout)
         left_layout.addWidget(dim_group)
 
-        # Блок типа оптимизации
+        # Тип оптимизации
         opt_group = QGroupBox("Тип оптимизации")
         opt_layout = QVBoxLayout()
 
@@ -135,7 +132,7 @@ class LinearProblemInput(QMainWindow):
         left_layout.addStretch()
         top_layout.addWidget(left_panel)
 
-        # === ПРАВАЯ ПАНЕЛЬ: Отображение задачи ===
+        # справа: задача текстом
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
 
@@ -157,7 +154,6 @@ class LinearProblemInput(QMainWindow):
 
         self.table_widget = QTableWidget()
         self.table_widget.horizontalHeader().setStretchLastSection(True)
-        # Текст постановки задачи - справа
         self.table_widget.cellChanged.connect(self.update_problem_text)
 
         matrix_layout.addWidget(self.table_widget)
@@ -189,10 +185,9 @@ class LinearProblemInput(QMainWindow):
 
         layout.addLayout(btn_layout)
 
-        # создание таблиц и текста по размерности и её изменении
         self.on_razmernost_changed()
 
-    # ВКЛАДКА 2: МЕТОД ИСКУССТВЕННОГО БАЗИСА
+    # Вкладка 2
     def _init_artificial_tab(self):
         layout = QVBoxLayout(self.tab_artificial)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -234,7 +229,6 @@ class LinearProblemInput(QMainWindow):
         control_group.setLayout(control_layout)
         scroll_layout.addWidget(control_group)
 
-        # === ИНФОРМАЦИЯ О ВСПОМОГАТЕЛЬНОЙ ЗАДАЧЕ ===
         info_group = QGroupBox("Вспомогательная задача")
         info_layout = QVBoxLayout()
         # F = x5 + x6 -> min
@@ -246,7 +240,7 @@ class LinearProblemInput(QMainWindow):
         info_group.setLayout(info_layout)
         scroll_layout.addWidget(info_group)
 
-        # Таблицы итераций
+        # Тут будут таблицы итераций
         tables_group = QGroupBox("Итерации")
         tables_layout = QVBoxLayout()
 
@@ -263,13 +257,12 @@ class LinearProblemInput(QMainWindow):
 
         scroll_layout.addStretch()
 
-    # ВКЛАДКА 3: СИМПЛЕКС МЕТОД
+    # Вкладка 3
     def _init_simplex_method_tab(self):
-        """Инициализация вкладки симплекс-метода (минимальный вариант)"""
         layout = QVBoxLayout(self.tab_simplex_method)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Скролл-область
+        # Скролл
         self.simplex_scroll = QScrollArea()
         self.simplex_scroll.setWidgetResizable(True)
         layout.addWidget(self.simplex_scroll)
@@ -279,7 +272,7 @@ class LinearProblemInput(QMainWindow):
         scroll_layout.setAlignment(Qt.AlignTop)
         self.simplex_scroll.setWidget(scroll_content)
 
-        # === КНОПКИ УПРАВЛЕНИЯ ===
+        # кнопки
         control_group = QGroupBox("")
         control_layout = QHBoxLayout()
 
@@ -302,7 +295,7 @@ class LinearProblemInput(QMainWindow):
         control_group.setLayout(control_layout)
         scroll_layout.addWidget(control_group)
 
-        # === ТАБЛИЦЫ ИТЕРАЦИЙ ===
+        # Тут будут итерации
         tables_group = QGroupBox("Итерации")
         tables_layout = QVBoxLayout()
 
@@ -340,9 +333,9 @@ class LinearProblemInput(QMainWindow):
         for j in range(self.n_vars):
             label = QLabel(f"c{j + 1}:")
             edit = QLineEdit()
-            edit.setPlaceholderText("0") # серым текстом
+            edit.setPlaceholderText("0")
             edit.setValidator(QRegularExpressionValidator(
-                QRegularExpression(r"^-?\d*\.?\d*(/\d+)?$")))
+                QRegularExpression(r"^-?\d*\.?\d*(/\d+)?$"))) #числа и дроби   - 0 . /
 
             # обновление постановки задачи при вводе коэффициентов
             edit.textChanged.connect(self.update_problem_text)
@@ -354,7 +347,6 @@ class LinearProblemInput(QMainWindow):
 
     # обновление таблицы матрицы ограничений
     def _update_matrix_table(self):
-        """Обновление таблицы матрицы ограничений"""
         self.table_widget.setRowCount(self.m_constrs)
         self.table_widget.setColumnCount(self.n_vars + 1)
 
@@ -365,6 +357,7 @@ class LinearProblemInput(QMainWindow):
         self.table_widget.setVerticalHeaderLabels(v_labels)
 
         # отключаем сигнал на время создания ячеек, чтобы не было лишних вызовов
+        # изменилась ячейка - обновился problem text
         self.table_widget.blockSignals(True)
 
         for i in range(self.m_constrs):
@@ -375,11 +368,10 @@ class LinearProblemInput(QMainWindow):
 
         # включаем сигнал обратно
         self.table_widget.blockSignals(False)
-
-        # Обновляем текст один раз после создания таблицы
+        # обновляем текст
         self.update_problem_text()
 
-    # Текст постановки задачи - справа
+    # Текст постановки задачи
     def update_problem_text(self):
         # Собираем коэффициенты целевой функции
         c_values = []
