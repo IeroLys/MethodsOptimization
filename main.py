@@ -69,7 +69,7 @@ class LinearProblemInput(QMainWindow):
     def _init_conditions_tab(self):
         layout = QVBoxLayout(self.tab_conditions)
 
-        # слева ввод, справа отображение задачи
+        # слева ввод
         top_layout = QHBoxLayout()
 
         # слева: ввод параметров
@@ -176,15 +176,16 @@ class LinearProblemInput(QMainWindow):
         layout = QVBoxLayout(self.tab_artificial)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Скролл
-        self.artificial_scroll = QScrollArea()
-        self.artificial_scroll.setWidgetResizable(True)
-        layout.addWidget(self.artificial_scroll)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        layout.addWidget(scroll)
 
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setAlignment(Qt.AlignTop)
-        self.artificial_scroll.setWidget(scroll_content)
+        scroll.setWidget(scroll_content)
 
         # Кнопки управления
         control_group = QGroupBox("")
@@ -216,16 +217,14 @@ class LinearProblemInput(QMainWindow):
 
         info_group = QGroupBox("Вспомогательная задача")
         info_layout = QVBoxLayout()
-        # F = x5 + x6 -> min
         self.newF = QLabel()
-        # x* = (0,0,0,0,4,1)
         self.newF_res = QLabel()
         info_layout.addWidget(self.newF)
         info_layout.addWidget(self.newF_res)
         info_group.setLayout(info_layout)
         scroll_layout.addWidget(info_group)
 
-        # Тут будут таблицы итераций
+        # Таблицы итераций
         tables_group = QGroupBox("Итерации")
         tables_layout = QVBoxLayout()
 
@@ -582,6 +581,11 @@ class LinearProblemInput(QMainWindow):
             f_item.setFlags(f_item.flags() & ~Qt.ItemIsEditable)
             new_table.setItem(self.m_constrs, c, f_item)
 
+        new_table.resizeColumnsToContents()
+        new_table.resizeRowsToContents()
+        new_table.setMinimumWidth(new_table.horizontalHeader().length() + 50)
+        new_table.setMinimumHeight(new_table.verticalHeader().length() + 50)
+
         self.iterations_layout.addWidget(QLabel(f"<b>Итерация *0</b>"))
         self.iterations_layout.addWidget(new_table)
         self.iteration_tables.append(new_table)
@@ -817,6 +821,11 @@ class LinearProblemInput(QMainWindow):
                 except ValueError:
                     pass
 
+        new_table.resizeColumnsToContents()
+        new_table.resizeRowsToContents()
+        new_table.setMinimumWidth(new_table.horizontalHeader().length() + 50)
+        new_table.setMinimumHeight(new_table.verticalHeader().length() + 50)
+
         # Добавляем таблицу в интерфейс
         iter_num = len(self.iteration_tables)
         self.iterations_layout.addWidget(QLabel(f"<b>Итерация *{iter_num}</b>"))
@@ -858,7 +867,7 @@ class LinearProblemInput(QMainWindow):
         rows = table.rowCount()
         cols = table.columnCount()
 
-        # Считываем таблицу
+        # считываем таблицу
         table_data = []
         for r in range(rows):
             row_vals = []
@@ -871,27 +880,27 @@ class LinearProblemInput(QMainWindow):
                 row_vals.append(val)
             table_data.append(row_vals)
 
-        # Заголовки
+        # заголовки
         col_headers = [table.horizontalHeaderItem(c).text() for c in range(cols)]
         row_headers = [table.verticalHeaderItem(r).text() for r in range(rows)]
 
-        # Получаем индексы базисных переменных
+        # получаем индексы базисных переменных
         basis_indices = []
-        for r in range(m):  # только строки ограничений (без F)
+        for r in range(m):  # строки ограничений без F
             var_name = row_headers[r]
             var_num = int(var_name[1:]) - 1
             basis_indices.append(var_num)
 
-        # Сопоставляем столбцы с переменными (только исходные)
+        # сопоставляем столбцы с переменными
         var_to_col = {}
         for c in range(cols - 1):  # без b
             header = col_headers[c]
             if header.startswith('x'):
                 var_num = int(header[1:]) - 1
-                if var_num < n:  # только исходные переменные
+                if var_num < n:
                     var_to_col[var_num] = c
 
-        # Собираем A_full и b_vector
+        # собираем A_full и b_vector
         A_full = [[Fraction(0) for _ in range(n)] for _ in range(m)]
         b_vector = [Fraction(0) for _ in range(m)]
 
@@ -902,23 +911,23 @@ class LinearProblemInput(QMainWindow):
                     col = var_to_col[j]
                     A_full[r][j] = table_data[r][col]
 
-        # Вычисляем новую F-строку
+        # вычисляем новую F-строку
         F_const, F_coeff_full = self.calculate_f_row(
             A_full, b_vector, basis_indices, self.c_coeffs
         )
 
-        # Создаём новую таблицу (только для исходных переменных + b)
+        # создаём новую таблицу
         simplex_table = QTableWidget()
         simplex_table.setRowCount(rows)
 
-        # Определяем, какие столбцы оставляем
+        # определяем, какие столбцы оставляем
         keep_cols = []
         keep_headers = []
         for c in range(cols - 1):  # без b
             header = col_headers[c]
             if header.startswith('x'):
                 var_num = int(header[1:]) - 1
-                if var_num < n:  # только исходные
+                if var_num < n:
                     keep_cols.append(c)
                     keep_headers.append(header)
         keep_cols.append(cols - 1)  # добавляем b
@@ -961,6 +970,11 @@ class LinearProblemInput(QMainWindow):
                 item.widget().deleteLater()
         self.simplex_tables.clear()
 
+        simplex_table.resizeColumnsToContents()
+        simplex_table.resizeRowsToContents()
+        simplex_table.setMinimumWidth(simplex_table.horizontalHeader().length() + 50)
+        simplex_table.setMinimumHeight(simplex_table.verticalHeader().length() + 50)
+
         # Добавляем новую таблицу
         self.simplex_iterations_layout.addWidget(QLabel("<b>Итерация 0 (начальная симплекс-таблица)</b>"))
         self.simplex_iterations_layout.addWidget(simplex_table)
@@ -978,6 +992,17 @@ class LinearProblemInput(QMainWindow):
 
         QMessageBox.information(self, "Успех", "Симплекс-таблица построена")
 
+        # является ли начальная симплекс-таблица уже оптимальной проверка
+        all_non_negative = True
+        for coeff in F_coeff_full:
+            if coeff < 0:
+                all_non_negative = False
+                break
+
+        if all_non_negative:
+            QMessageBox.information(self, "Оптимальное решение",
+                                    "Начальная симплекс-таблица уже является оптимальной!")
+
     # Пересчёт f строки
     def calculate_f_row(self, A, b, basic_vars, c):
         m = len(A)  # количество строк (базисных переменных)
@@ -990,9 +1015,7 @@ class LinearProblemInput(QMainWindow):
         # Для каждой базисной переменной
         for row in range(m):
             basic_var = basic_vars[row]
-            # Прибавляем c_basic * b_row к свободному члену
             F_const += c[basic_var] * b[row]
-            # Вычитаем c_basic * A[row][j] из коэффициентов при всех переменных
             for j in range(n):
                 F_coeff[j] -= c[basic_var] * A[row][j]
 
@@ -1175,6 +1198,11 @@ class LinearProblemInput(QMainWindow):
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 new_table.setItem(r, c, item)
 
+        new_table.resizeColumnsToContents()
+        new_table.resizeRowsToContents()
+        new_table.setMinimumWidth(new_table.horizontalHeader().length() + 50)
+        new_table.setMinimumHeight(new_table.verticalHeader().length() + 50)
+
         # Добавляем в интерфейс
         iter_num = len(self.simplex_tables)
         self.simplex_iterations_layout.addWidget(QLabel(f"<b>Итерация {iter_num}</b>"))
@@ -1188,7 +1216,7 @@ class LinearProblemInput(QMainWindow):
 
         # Проверка оптимальности
         last_row = len(new_data) - 1
-        rows_limit = self.m_constrs  # количество строк ограничений
+        rows_limit = self.m_constrs
 
         # Проверяем, есть ли отрицательные коэффициенты в F-строке
         has_negative = False
@@ -1204,7 +1232,7 @@ class LinearProblemInput(QMainWindow):
                                     "Симплекс-метод завершён. Достигнуто оптимальное решение.")
 
         else:
-            # Проверяем, есть ли положительные элементы в столбце с отрицательным коэффициентом
+            # Проверяем, есть ли положительные в столбце с отрицательным коэффициентом
             has_positive = False
             for r in range(rows_limit):
                 if new_data[r][negative_col] > 0:
