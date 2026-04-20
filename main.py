@@ -328,7 +328,7 @@ class LinearProblemInput(QMainWindow):
             self.c_layout.addWidget(edit)
             self.c_inputs.append(edit)
 
-    # Обновление таблицы матрицы ограничений
+    # Обновление таблицы матрицы ограничений - всё очищаем
     def _update_matrix_table(self):
         self.table_widget.setRowCount(self.m_constrs)
         self.table_widget.setColumnCount(self.n_vars + 1)
@@ -354,7 +354,6 @@ class LinearProblemInput(QMainWindow):
         # обновляем текст
         # self.update_problem_text()
 
-    # Тут была кривая функция :D
     # def update_problem_text(self):
 
     # Дроби
@@ -376,8 +375,9 @@ class LinearProblemInput(QMainWindow):
         try:
             self.c_coeffs = []
             for edit in self.c_inputs:
-                self.c_coeffs.append(self.parse_fraction(edit.text()))
+                self.c_coeffs.append(self.parse_fraction(edit.text())) # текст в дроби
 
+            # читаем интерфейс и сохраняем
             self.matrix_A = []
             self.vector_b = []
             for i in range(self.m_constrs):
@@ -393,10 +393,12 @@ class LinearProblemInput(QMainWindow):
 
             self.is_minimization = self.min_radio.isChecked()
 
+            # если задача на макс то умножаем на (-1)
             if not self.is_minimization:
                 self.c_coeffs = [-c for c in self.c_coeffs]
                 self.is_minimization = True
 
+            # обновляем элементы во второй вкладке
             self.update_newf()
             self.update_newf_res()
             self.update_x0isc_table()
@@ -549,6 +551,7 @@ class LinearProblemInput(QMainWindow):
         v_labels = [f"x{self.n_vars + i + 1}" for i in range(self.m_constrs)] + ["F"]
         new_table.setVerticalHeaderLabels(v_labels)
 
+        # заполняем
         for i in range(self.m_constrs):
             for j in range(self.n_vars):
                 val = str(self.matrix_A[i][j])
@@ -803,7 +806,8 @@ class LinearProblemInput(QMainWindow):
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 new_table.setItem(r, c, item)
 
-        for col in range(new_table.columnCount() - 1, -1, -1):
+        # удаление столбца
+        for col in range(new_table.columnCount() - 1, -1, -1): # справа налево в обратном порядке
             header = new_table.horizontalHeaderItem(col)
             if header and header.text().startswith('x'):
                 try:
@@ -964,12 +968,9 @@ class LinearProblemInput(QMainWindow):
     # Пересчёт f строки
     def calculate_f_row(self, A, b, basic_vars, c):
 
-        # A = [
-        #     [2, -1],
-        #     [1, 1]
-        # ]
         # b = [1, 2]
         # basic_vars = [1, 0]  # в строке 0 базисная x₂ (номер 1), в строке 1 базисная x₁ (номер 0)
+        # basic_vars.index(1) -> 2
         # c = [-2, -1, -3, -1]  # коэффициенты в F
 
 
