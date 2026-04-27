@@ -288,6 +288,15 @@ class LinearProblemInput(QMainWindow):
         tables_group.setLayout(tables_layout)
         scroll_layout.addWidget(tables_group)
 
+        sol_group = QGroupBox("Оптимальное решение")
+        sol_layout = QVBoxLayout()
+        self.simplex_f_label = QLabel()
+        self.simplex_x_label = QLabel()
+        sol_layout.addWidget(self.simplex_f_label)
+        sol_layout.addWidget(self.simplex_x_label)
+        sol_group.setLayout(sol_layout)
+        scroll_layout.addWidget(sol_group)
+
         scroll_layout.addStretch()
 
     """ Первая вкладка """
@@ -581,7 +590,7 @@ class LinearProblemInput(QMainWindow):
             f_item.setFlags(f_item.flags() & ~Qt.ItemIsEditable)
             new_table.setItem(self.m_constrs, c, f_item)
 
-        self._highlight_pivot_candidates(new_table)
+        self._highlight_opor_candidates(new_table)
 
         new_table.resizeColumnsToContents()
         new_table.resizeRowsToContents()
@@ -606,13 +615,12 @@ class LinearProblemInput(QMainWindow):
 
         # print(f"Выбран элемент: строка {row}, столбец {col} в таблице {id(self.selected_table_widget)}")
 
-    def _highlight_pivot_candidates(self, table_widget):
-        """Подсвечивает только корректные опорные элементы по правилу минимального отношения"""
+    def _highlight_opor_candidates(self, table_widget):
         m = self.m_constrs
         rows = table_widget.rowCount()
         cols = table_widget.columnCount()
 
-        # Считываем данные таблицы в матрицу дробей
+        # cчитываем данные
         data = []
         for r in range(rows):
             row_data = []
@@ -626,13 +634,11 @@ class LinearProblemInput(QMainWindow):
             data.append(row_data)
 
         f_idx = m
-        light_green = QColor(210, 255, 210)  # Мягкий светло-зелёный
+        light_green = QColor(210, 255, 210)  # светло-зелёный
 
-        # Проходим по всем столбцам кроме последнего (b)
-        for c in range(cols - 1):
-            # Столбец может войти в базис только если коэффициент в строке F отрицательный
-            if data[f_idx][c] < 0:
-                # Ищем строку с минимальным отношением ИМЕННО для этого столбца
+        for c in range(cols - 1): # без b
+            if data[f_idx][c] < 0: # в f строке отрицательный
+                # ищем строку
                 min_ratio = None
                 best_r = -1
                 for r in range(m):
@@ -644,19 +650,18 @@ class LinearProblemInput(QMainWindow):
                             min_ratio = ratio
                             best_r = r
 
-                # Подсвечиваем только правильный элемент
                 if best_r != -1:
                     item = table_widget.item(best_r, c)
                     if item:
                         item.setBackground(light_green)
 
-    def _find_pivot_element(self, table_widget):
+    def _find_opor_element(self, table_widget):
         """
-        Считывает QTableWidget, находит ведущий столбец и строку по симплекс-правилам.
-        Возвращает кортеж: (pivot_row, pivot_col)
-        • (-1, -1)       → достигнут оптимум (нет отрицательных в строке F)
-        • (-1, col)      → задача не ограничена (в выбранном столбце нет положительных элементов)
-        • (row, col)     → корректный опорный элемент для итерации
+        Наахождение ведущего столбца и строки
+        возвращается кортеж: (pivot_row, pivot_col)
+        (-1, -1) - оптимум
+        (-1, col) - задача не ограничена
+        (row, col) - корректный опорный элемент для итерации
         """
         # считываем данные таблицы
         rows = table_widget.rowCount()
@@ -673,7 +678,7 @@ class LinearProblemInput(QMainWindow):
                 row_data.append(val)
             data.append(row_data)
 
-        # ищем ведущий столбец - самый отрицательный коэффициент в строке F)
+        # ищем ведущий столбец - самый отрицательный коэффициент в строке F
         f_idx = len(data) - 1
         min_val = Fraction(0)
         pivot_c = -1
@@ -683,9 +688,9 @@ class LinearProblemInput(QMainWindow):
                 pivot_c = c
 
         if pivot_c == -1:
-            return -1, -1  # Оптимум достигнут
+            return -1, -1  # оптимум
 
-        # ищем ведущую строку - минимальное симплексное отношение)
+        # ищем ведущую строку - минимальное симплексное отношение
         min_ratio = None
         pivot_r = -1
         for r in range(self.m_constrs):
@@ -708,7 +713,7 @@ class LinearProblemInput(QMainWindow):
         max_iters = 50
 
         while iter_count < max_iters:
-            pivot_r, pivot_c = self._find_pivot_element(current_table)
+            pivot_r, pivot_c = self._find_opor_element(current_table)
 
             if pivot_c == -1:
                 self.last_artificial_table = current_table
@@ -804,7 +809,7 @@ class LinearProblemInput(QMainWindow):
 
         if f_val >= 0:
             QMessageBox.warning(self, "Внимание",
-                                "Коэффициент в строке F должен быть отрицательным (для задачи на min)!")
+                                "Коэффициент в строке F должен быть отрицательным!")
             return
 
         # Считываем данные таблицы
@@ -849,7 +854,7 @@ class LinearProblemInput(QMainWindow):
         try:
             opor_itm.setBackground(QColor("orange"))
             current_table.clearSelection()
-            QMessageBox.information(self, "Успех", "Опорный элемент принят. Итерация выполнена!")
+            QMessageBox.information(self, "Успех", "Итерация выполнена!")
             self.perform_opor()
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Сбой преобразования:\n{str(e)}")
@@ -993,7 +998,7 @@ class LinearProblemInput(QMainWindow):
         new_table.setMinimumWidth(new_table.horizontalHeader().length() + 50)
         new_table.setMinimumHeight(new_table.verticalHeader().length() + 50)
 
-        self._highlight_pivot_candidates(new_table)
+        self._highlight_opor_candidates(new_table)
 
         # Добавляем таблицу в интерфейс
         iter_num = len(self.iteration_tables)
@@ -1144,7 +1149,7 @@ class LinearProblemInput(QMainWindow):
         simplex_table.setMinimumWidth(simplex_table.horizontalHeader().length() + 50)
         simplex_table.setMinimumHeight(simplex_table.verticalHeader().length() + 50)
 
-        self._highlight_pivot_candidates(simplex_table)
+        self._highlight_opor_candidates(simplex_table)
 
         # Добавляем новую таблицу
         self.simplex_iterations_layout.addWidget(QLabel("<b>Итерация 0 (начальная симплекс-таблица)</b>"))
@@ -1287,7 +1292,7 @@ class LinearProblemInput(QMainWindow):
         try:
             opor_itm.setBackground(QColor("pink"))
             current_table.clearSelection()
-            QMessageBox.information(self, "Успех", "Опорный элемент принят. Итерация выполнена!")
+            QMessageBox.information(self, "Успех", "Итерация выполнена!")
             self.simplex_perform_opor()
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Сбой преобразования:\n{str(e)}")
@@ -1305,6 +1310,9 @@ class LinearProblemInput(QMainWindow):
         label_item = self.simplex_iterations_layout.takeAt(self.simplex_iterations_layout.count() - 1)
         if label_item and label_item.widget():
             label_item.widget().deleteLater()
+
+        self.simplex_f_label.clear()
+        self.simplex_x_label.clear()
 
         self.simplex_tables.pop()
 
@@ -1409,7 +1417,7 @@ class LinearProblemInput(QMainWindow):
         new_table.setMinimumWidth(new_table.horizontalHeader().length() + 50)
         new_table.setMinimumHeight(new_table.verticalHeader().length() + 50)
 
-        self._highlight_pivot_candidates(new_table)
+        self._highlight_opor_candidates(new_table)
 
         # Добавляем в интерфейс
         iter_num = len(self.simplex_tables)
@@ -1436,7 +1444,8 @@ class LinearProblemInput(QMainWindow):
                 break
 
         if not has_negative:
-            QMessageBox.information(self, "Оптимум найден",
+            self.update_simplex_solution()
+            QMessageBox.information(self, "Успех",
                                     "Симплекс-метод завершён. Достигнуто оптимальное решение.")
 
         else:
@@ -1452,8 +1461,7 @@ class LinearProblemInput(QMainWindow):
                 self.simplex_btn_select.setEnabled(False)
                 self.simplex_btn_auto.setEnabled(False)
                 QMessageBox.warning(self, "Функция не ограничена",
-                                    "Целевая функция не ограничена снизу!\n"
-                                    "Оптимальное решение не существует (F → -∞).")
+                                    "Целевая функция не ограничена снизу!\n")
 
     # Кнопка авто-решения
     def simplex_auto_solve(self):
@@ -1463,15 +1471,16 @@ class LinearProblemInput(QMainWindow):
         max_iters = 50
 
         while iter_count < max_iters:
-            pivot_r, pivot_c = self._find_pivot_element(current_table)
+            pivot_r, pivot_c = self._find_opor_element(current_table)
 
             if pivot_c == -1:
-                QMessageBox.information(self, "Оптимум найден", "Симплекс-метод завершён.")
+                self.update_simplex_solution()
+                QMessageBox.information(self, "Успех", "Симплекс-метод завершён. Достигнуто оптимальное решение.")
                 self.simplex_btn_select.setEnabled(False)
                 self.simplex_btn_auto.setEnabled(False)
                 return
             if pivot_r == -1:
-                QMessageBox.warning(self, "Не ограничена", "Целевая функция не ограничена снизу!")
+                QMessageBox.warning(self, "Функция не ограничена", "Целевая функция не ограничена снизу!")
                 self.simplex_btn_select.setEnabled(False)
                 self.simplex_btn_auto.setEnabled(False)
                 return
@@ -1484,6 +1493,53 @@ class LinearProblemInput(QMainWindow):
             current_table = self.simplex_tables[-1]
 
         QMessageBox.warning(self, "Предупреждение", "Превышен лимит итераций.")
+
+    def update_simplex_solution(self):
+        if not self.simplex_tables:
+            self.simplex_f_label.clear()
+            self.simplex_x_label.clear()
+            return
+
+        table = self.simplex_tables[-1]
+        rows = table.rowCount()
+        cols = table.columnCount()
+        m = self.m_constrs
+        n = self.n_vars
+
+        # считываем данные
+        data = []
+        for r in range(rows):
+            row_data = []
+            for c in range(cols):
+                item = table.item(r, c)
+                try:
+                    val = self.parse_fraction(item.text()) if item and item.text() else Fraction(0)
+                except:
+                    val = Fraction(0)
+                row_data.append(val)
+            data.append(row_data)
+
+        f_val = -data[rows - 1][-1]
+        f_text = str(f_val.numerator) if f_val.denominator == 1 else str(f_val)
+
+        x_star = [Fraction(0)] * n
+        for r in range(m):
+            header = table.verticalHeaderItem(r).text()
+            if header.startswith('x'):
+                try:
+                    var_idx = int(header[1:]) - 1
+                    if 0 <= var_idx < n:
+                        x_star[var_idx] = data[r][-1]
+                except:
+                    pass
+
+        x_parts = []
+        for val in x_star:
+            x_parts.append(str(val.numerator) if val.denominator == 1 else str(val))
+        x_text = ", ".join(x_parts)
+
+        self.simplex_f_label.setText(f"f* = {f_text}")
+        self.simplex_x_label.setText(f"x* = ({x_text})")
 
 def main():
     app = QApplication(sys.argv)
